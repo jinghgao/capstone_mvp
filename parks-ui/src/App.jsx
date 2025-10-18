@@ -64,7 +64,10 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      if (!r.ok) {
+        const errorData = await r.json().catch(() => ({}));
+        throw new Error(errorData.detail?.error || `${r.status} ${r.statusText}`);
+      }
       const data = await r.json();
       setResp(data);
     } catch (e) {
@@ -87,6 +90,27 @@ export default function App() {
     return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
   }
 
+  // ✨ NEW: Clarifications component
+  function ClarificationsView({ clarifications }) {
+    if (!clarifications || !clarifications.length) return null;
+    return (
+      <div className="card" style={{ marginTop: 16, background: "#fff3cd", borderColor: "#ffc107" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 24 }}>💡</span>
+          <div className="card-title" style={{ margin: 0 }}>More Information Needed</div>
+        </div>
+        <ul className="bullets">
+          {clarifications.map((c, i) => (
+            <li key={i} style={{ fontSize: 14 }}>{c}</li>
+          ))}
+        </ul>
+        <div style={{ marginTop: 12, fontSize: 13, color: "#856404" }}>
+          Please provide the missing information and try again.
+        </div>
+      </div>
+    );
+  }
+
   function ChartsView({ charts }) {
     if (!charts || !charts.length) return null;
 
@@ -97,6 +121,11 @@ export default function App() {
             <div className="card-title">
               {chart.title || `Chart ${idx + 1}`}
             </div>
+            {chart.note && (
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 8, fontStyle: "italic" }}>
+                {chart.note}
+              </div>
+            )}
             <div style={{ width: "100%", height: 400 }}>
               {renderChart(chart)}
             </div>
@@ -353,6 +382,23 @@ export default function App() {
     );
   }
 
+  // ✨ NEW: Debug info view
+  function DebugView({ debug }) {
+    if (!debug) return null;
+    return (
+      <div className="mt">
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 8 }}>
+            🐛 Debug Information
+          </summary>
+          <div className="card" style={{ background: "#f8f9fa" }}>
+            <pre className="json">{JSON.stringify(debug, null, 2)}</pre>
+          </div>
+        </details>
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <div className="shell">
@@ -525,24 +571,39 @@ export default function App() {
           {!resp && <div className="muted">No response yet. Try a query above!</div>}
           {resp && (
             <div className="stack">
+              {/* ✨ NEW: Handle clarifications */}
+              {activeTab === "agent" && resp.status === "need_clarification" && (
+                <ClarificationsView clarifications={resp.clarifications} />
+              )}
+
               {resp.answer_md && <div>{renderMarkdown(resp.answer_md)}</div>}
               {activeTab === "agent" && <ChartsView charts={resp.charts} />}
               {activeTab === "agent" && <TablesView tables={resp.tables} />}
               {activeTab === "agent" && <CitationsView citations={resp.citations} />}
               {activeTab === "agent" && <LogsView logs={resp.logs} />}
+              {activeTab === "agent" && <DebugView debug={resp.debug} />}
 
+              {/* ✨ UPDATED: NLU display logic */}
               {activeTab === "nlu" && (
                 <div className="stack">
                   <div className="card">
                     <div className="label">Intent</div>
-                    <pre className="json">{JSON.stringify(resp.intent || resp.intent?.intent, null, 2)}</pre>
+                    <pre className="json">{JSON.stringify(resp.intent, null, 2)}</pre>
+                  </div>
+                  <div className="card">
+                    <div className="label">Confidence</div>
+                    <pre className="json">{JSON.stringify(resp.confidence, null, 2)}</pre>
                   </div>
                   <div className="card">
                     <div className="label">Slots</div>
-                    <pre className="json">{JSON.stringify(resp.slots || resp?.slots, null, 2)}</pre>
+                    <pre className="json">{JSON.stringify(resp.slots, null, 2)}</pre>
                   </div>
                   <div className="card">
-                    <div className="label">Raw</div>
+                    <div className="label">Raw Query</div>
+                    <pre className="json">{JSON.stringify(resp.raw_query, null, 2)}</pre>
+                  </div>
+                  <div className="card">
+                    <div className="label">Full Response</div>
                     <pre className="json">{JSON.stringify(resp, null, 2)}</pre>
                   </div>
                 </div>

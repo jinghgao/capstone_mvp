@@ -1,21 +1,9 @@
-# composer.py
+# composer.py - Response Composition Layer (Adapted for Refactored Architecture)
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import re
 
 # ========== LLM Integration (Ollama Only) ==========
-# This system uses OLLAMA for local LLM inference
-# No OpenAI API key required - all processing is local
-# 
-# Prerequisites:
-# 1. Install Ollama: brew install ollama (or from https://ollama.com)
-# 2. Start Ollama: open -a Ollama
-# 3. Download model: ollama pull llama3.2:3b
-# 4. Install Python client: pip install openai
-#
-# The 'openai' package is only used as a client library to connect
-# to Ollama's OpenAI-compatible API endpoint (http://localhost:11434/v1)
-
 try:
     from openai import OpenAI
     LLM_AVAILABLE = True
@@ -26,12 +14,7 @@ except ImportError:
 
 # Configuration - Local Ollama Only
 OLLAMA_BASE_URL = "http://localhost:11434/v1"
-OLLAMA_MODEL = "llama3.2:3b"  # Available models: llama3.2:3b, llama3.2:1b, mistral, phi3
-
-# To switch models, change OLLAMA_MODEL and ensure the model is downloaded:
-# ollama pull llama3.2:1b  (faster, smaller)
-# ollama pull mistral      (more capable, slower)
-# ollama pull phi3         (Microsoft, good balance)
+OLLAMA_MODEL = "llama3.2:3b"
 
 
 def _summarize_rag_context(
@@ -41,30 +24,16 @@ def _summarize_rag_context(
 ) -> str:
     """
     Use local Ollama LLM to summarize RAG document snippets into coherent context
-    
-    Note: This uses Ollama (local LLM), NOT OpenAI API
-    We use the 'openai' Python library only as a client to connect to Ollama's OpenAI-compatible API
-    
-    Args:
-        rag_snippets: RAG retrieved document snippets
-        query: User's original query
-        sql_result_summary: SQL query result summary (if available)
-    
-    Returns:
-        Formatted context explanation
     """
     if not LLM_AVAILABLE or not rag_snippets:
-        # Fallback: simple formatting without LLM
         return _format_rag_snippets_simple(rag_snippets)
     
     try:
-        # 准备上下文
         context_text = "\n\n".join([
             f"Source {i+1} (page {snippet.get('page', '?')}): {snippet.get('text', '')[:500]}"
             for i, snippet in enumerate(rag_snippets[:3])
         ])
         
-        # 构建 prompt
         if sql_result_summary:
             prompt = f"""You are an assistant helping interpret park maintenance data.
 
@@ -96,7 +65,6 @@ Task: Summarize the key information from the reference documents that answers th
 
 Use markdown formatting with bullet points."""
 
-        # Call Ollama LLM
         client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
         
         response = client.chat.completions.create(
@@ -107,7 +75,7 @@ Use markdown formatting with bullet points."""
             ],
             temperature=0.3,
             max_tokens=300,
-            timeout=10.0  # 10 second timeout
+            timeout=10.0
         )
         
         summary = response.choices[0].message.content.strip()
@@ -117,21 +85,17 @@ Use markdown formatting with bullet points."""
         print(f"[WARN] Ollama LLM summarization failed: {e}")
         print(f"[INFO] Make sure Ollama is running: open -a Ollama")
         print(f"[INFO] Check model is available: ollama list")
-        # Fallback to simple formatting
         return _format_rag_snippets_simple(rag_snippets)
 
 
 def _format_rag_snippets_simple(snippets: List[Dict[str, Any]]) -> str:
-    """
-    Simple RAG snippet formatting (fallback when Ollama is unavailable)
-    """
+    """Simple RAG snippet formatting (fallback when Ollama is unavailable)"""
     if not snippets:
         return ""
     
     output = "### Reference Context\n\n"
     for i, snippet in enumerate(snippets[:3], 1):
         text = snippet.get("text", "")
-        # Clean text
         text = re.sub(r'\s+', ' ', text).strip()
         text = text[:200] + "..." if len(text) > 200 else text
         
@@ -147,52 +111,90 @@ def _snip(txt: str, n: int = 150) -> str:
     return (s[:n] + "...") if len(s) > n else s
 
 
-def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
+def compose_answer(
+    nlu: Dict[str, Any], 
+    state: Dict[str, Any],
+    plan_metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Compose final user-facing answer from execution state
+    
+    Args:
+        nlu: NLU result dict with {intent, confidence, slots}
+        state: ExecutionState.to_dict() with {evidence, logs, errors, slots}
+        plan_metadata: Optional metadata from ExecutionPlan {workflow, template, ...}
+    
+    Returns:
+        {
+            "answer_md": str,
+            "tables": list,
+            "charts": list,
+            "citations": list,
+            "logs": list
+        }
+    """
     intent = nlu.get("intent", "")
-    ev = state["evidence"]
+    ev = state.get("evidence", {})
     tables: List[Dict[str, Any]] = []
     citations: List[Dict[str, Any]] = []
     charts: List[Dict[str, Any]] = []
     answer_md = ""
     
-    # Get user's original query
-    user_query = nlu.get("slots", {}).get("original_query", "")
-    if not user_query and state.get("slots"):
-        user_query = state["slots"].get("text", "")
+    # Get user's original query from multiple possible sources
+    user_query = (
+        nlu.get("raw_query", "") or 
+        nlu.get("slots", {}).get("text", "") or
+        state.get("slots", {}).get("text", "")
+    )
+    
+    # Get template hint from plan_metadata or infer from logs
+    template_hint = None
+    if plan_metadata:
+        template_hint = plan_metadata.get("template")
+    
+    # Fallback: try to extract from execution logs
+    if not template_hint:
+        template_hint = _extract_template_from_logs(state.get("logs", []))
+    
+    # Get slots for template context
+    slots = nlu.get("slots", {}) or state.get("slots", {})
 
     # ========== RAG content handling ==========
-    if intent in ("RAG", "RAG+SQL_tool"):
+    if intent in ("RAG", "RAG+SQL_tool", "RAG+CV_tool"):
         sop = ev.get("sop", {})
         kb_hits = ev.get("kb_hits", [])
         
-        # Check if SOP extraction found anything useful
         has_sop_content = any(sop.get(k) for k in ["steps", "materials", "tools", "safety"])
         
-        # Detect if this is actually mowing SOP or field dimensions
+        # Detect query type
         is_mowing_query = False
         if kb_hits:
-            # Check if retrieved documents are about mowing
             combined_text = " ".join([h.get("text", "")[:200] for h in kb_hits[:2]]).lower()
             is_mowing_query = any(k in combined_text for k in ["mowing", "mow", "contractor", "equipment", "ppe"])
         
         if has_sop_content and is_mowing_query:
             # Display as Mowing SOP
-            answer_md = (
-                "**Mowing SOP (Standard Operating Procedures)**\n\n"
-                "### Steps\n" + "\n".join([f"{i+1}. {s}" for i, s in enumerate(sop.get("steps", []))]) +
-                ( "\n\n### Materials\n- " + "\n- ".join(sop.get("materials", [])) if sop.get("materials") else "" ) +
-                ( "\n\n### Tools\n- " + "\n- ".join(sop.get("tools", [])) if sop.get("tools") else "" ) +
-                ( "\n\n### Safety\n- " + "\n- ".join(sop.get("safety", [])) if sop.get("safety") else "" )
-            )
+            answer_md = "**Mowing SOP (Standard Operating Procedures)**\n\n"
+            
+            if sop.get("steps"):
+                answer_md += "### Steps\n" + "\n".join([f"{i+1}. {s}" for i, s in enumerate(sop["steps"])])
+            
+            if sop.get("materials"):
+                answer_md += "\n\n### Materials\n- " + "\n- ".join(sop["materials"])
+            
+            if sop.get("tools"):
+                answer_md += "\n\n### Tools\n- " + "\n- ".join(sop["tools"])
+            
+            if sop.get("safety"):
+                answer_md += "\n\n### Safety\n- " + "\n- ".join(sop["safety"])
             
             for h in kb_hits[:3]:
                 citations.append({"title": "Mowing Standard/Manual", "source": h.get("source", "")})
                 
         elif kb_hits:
-            # Field dimensions or other RAG query - use LLM to summarize
+            # Field dimensions or other RAG query
             answer_md = "### Field Standards Information\n\n"
             
-            # Use LLM to summarize RAG hits
             if LLM_AVAILABLE:
                 try:
                     summary = _summarize_rag_context(
@@ -202,61 +204,46 @@ def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]
                     )
                     answer_md += summary
                 except Exception as e:
-                    print(f"[WARN] LLM summary failed, using fallback: {e}")
+                    print(f"[WARN] LLM summary failed: {e}")
                     answer_md += _format_rag_snippets_simple(kb_hits)
             else:
-                # Fallback: show formatted snippets
                 answer_md += _format_rag_snippets_simple(kb_hits)
             
             for h in kb_hits[:3]:
                 citations.append({"title": "Field Standards Reference", "source": h.get("source", "")})
 
-    # ========== SQL content handling + chart generation ==========
+    # ========== SQL content handling ==========
     if intent in ("SQL_tool", "RAG+SQL_tool"):
         sql = ev.get("sql", {})
         rows = sql.get("rows", [])
         
-        # Get template hint
-        template_hint = None
-        if state.get("plan"):
-            for step in state["plan"]:
-                if step.get("tool") == "sql_query_rag":
-                    template_hint = step.get("args", {}).get("template")
-                    break
-        
-        # Generate chart config
+        # Generate chart
         chart_config = _detect_chart_type(rows, template_hint)
         if chart_config:
             charts.append(chart_config)
-            chart_desc = _generate_chart_description(chart_config, rows)
-            if chart_desc:
-                if answer_md:
-                    answer_md += "\n\n"
-                answer_md += chart_desc + "\n\n"
         
         # Table data
-        tables.append({
-            "name": _get_table_name(template_hint, nlu.get("slots", {})),
-            "columns": list(rows[0].keys()) if rows else [],
-            "rows": rows
-        })
+        if rows:
+            tables.append({
+                "name": _get_table_name(template_hint, slots),
+                "columns": list(rows[0].keys()),
+                "rows": rows
+            })
         
-        # Generate SQL result summary
-        sql_summary = _generate_sql_summary(rows, template_hint, nlu.get("slots", {}))
+        # Generate SQL summary
+        sql_summary = _generate_sql_summary(rows, template_hint, slots)
         
         if answer_md:
             answer_md += "\n\n"
         
-        # Main results
         answer_md += sql_summary
         answer_md += f"\n\n**Query Performance**: {sql.get('rowcount',0)} rows in {sql.get('elapsed_ms',0)}ms"
         
-        # KEY FEATURE: Use Ollama LLM to enhance RAG content
+        # Add RAG context for hybrid queries
         if intent == "RAG+SQL_tool":
             rag_hits = ev.get("kb_hits", [])
             if rag_hits:
                 answer_md += "\n\n---\n\n"
-                # Use Ollama to summarize RAG context
                 rag_context = _summarize_rag_context(
                     rag_snippets=rag_hits,
                     query=user_query,
@@ -264,25 +251,19 @@ def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]
                 )
                 answer_md += rag_context
                 
-                # Add citations
                 for h in rag_hits[:3]:
-                    citations.append({
-                        "title": "Reference Document", 
-                        "source": h.get("source", "")
-                    })
+                    citations.append({"title": "Reference Document", "source": h.get("source", "")})
 
     # ========== CV content handling ==========
     if intent in ("CV_tool", "RAG+CV_tool"):
         cv = ev.get("cv", {})
         
-        # Check if this is mock data
         is_mock = any("VLM not configured" in str(label) for label in cv.get("labels", []))
         
         if answer_md:
             answer_md += "\n\n"
         
         if is_mock:
-            # Mock assessment - show helpful setup message
             answer_md += (
                 "**Image Analysis (Not Configured)**\n\n"
                 "To enable AI-powered image analysis:\n"
@@ -296,7 +277,6 @@ def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]
                 "- Safety hazard detection"
             )
         else:
-            # Real VLM assessment
             answer_md += (
                 "**Image Assessment**\n\n"
                 f"Condition: **{cv.get('condition','unknown')}** (score {cv.get('score',0):.2f})\n\n"
@@ -307,7 +287,7 @@ def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]
             if cv.get("low_confidence"):
                 answer_md = "> ⚠️ Low confidence - consider uploading a clearer image.\n\n" + answer_md
         
-        # RAG context (if available)
+        # Add RAG context for hybrid CV queries
         if intent == "RAG+CV_tool":
             rag_hits = ev.get("kb_hits", [])
             if rag_hits and not is_mock:
@@ -332,14 +312,32 @@ def compose_answer(nlu: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]
         "charts": charts,
         "map_layer": None,
         "citations": citations,
-        "logs": state["logs"]
+        "logs": state.get("logs", [])
     }
 
 
-# ========== 辅助函数 ==========
+# ========== Helper Functions ==========
 
-def _get_table_name(template_hint: str, slots: Dict[str, Any]) -> str:
+def _extract_template_from_logs(logs: List[Dict[str, Any]]) -> Optional[str]:
+    """
+    Extract SQL template from execution logs
+    
+    This is a fallback method when plan_metadata is not provided
+    """
+    for log in logs:
+        if log.get("tool") == "sql_query_rag":
+            # Template would be in the args if we logged it
+            # For now, we can't extract it from redacted args
+            # This is why passing plan_metadata is preferred
+            pass
+    return None
+
+
+def _get_table_name(template_hint: Optional[str], slots: Dict[str, Any]) -> str:
     """Generate table name based on template"""
+    if not template_hint:
+        return "Query Result"
+    
     if template_hint == "mowing.labor_cost_month_top1":
         month = slots.get("month", "")
         year = slots.get("year", "")
@@ -352,16 +350,17 @@ def _get_table_name(template_hint: str, slots: Dict[str, Any]) -> str:
         return "Last Mowing Dates"
     elif template_hint == "mowing.cost_breakdown":
         return "Detailed Cost Breakdown"
+    
     return "Query Result"
 
 
-def _generate_sql_summary(rows: List[Dict], template_hint: str, slots: Dict[str, Any]) -> str:
+def _generate_sql_summary(rows: List[Dict], template_hint: Optional[str], slots: Dict[str, Any]) -> str:
     """Generate natural language summary of SQL results"""
     if not rows:
         return "No results found."
     
     if template_hint == "mowing.labor_cost_month_top1":
-        if len(rows) > 0:
+        if rows:
             park = rows[0].get("park", "Unknown")
             cost = rows[0].get("total_cost", 0)
             month = slots.get("month", "")
@@ -384,7 +383,7 @@ def _generate_sql_summary(rows: List[Dict], template_hint: str, slots: Dict[str,
     return f"### Results\n\nFound **{len(rows)} records**."
 
 
-def _detect_chart_type(rows: List[Dict], template_hint: str = None) -> Optional[Dict[str, Any]]:
+def _detect_chart_type(rows: List[Dict], template_hint: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Detect appropriate chart type based on data structure"""
     if not rows:
         return None
@@ -395,16 +394,13 @@ def _detect_chart_type(rows: List[Dict], template_hint: str = None) -> Optional[
         if "month" in columns and "monthly_cost" in columns:
             parks = sorted(list(set(row.get("park") for row in rows if row.get("park"))))
             
-            # Limit: if more than 10 parks, only show top 10 by cost
             if len(parks) > 10:
-                # Calculate total cost per park
                 park_totals = {}
                 for park in parks:
                     park_totals[park] = sum(
                         row["monthly_cost"] for row in rows 
                         if row.get("park") == park
                     )
-                # Take top 10
                 top_parks = sorted(park_totals.items(), key=lambda x: x[1], reverse=True)[:10]
                 parks = [p[0] for p in top_parks]
             
@@ -448,16 +444,12 @@ def _detect_chart_type(rows: List[Dict], template_hint: str = None) -> Optional[
     
     elif template_hint == "mowing.last_mowing_date":
         if "park" in columns or "PARK" in columns:
-            # 支持大小写不敏感的字段名
             def get_field(row, *field_names):
-                """尝试多个可能的字段名（大小写不敏感）"""
                 for field in field_names:
                     if field in row:
                         return row[field]
-                    # 尝试大写版本
                     if field.upper() in row:
                         return row[field.upper()]
-                    # 尝试小写版本
                     if field.lower() in row:
                         return row[field.lower()]
                 return 0
