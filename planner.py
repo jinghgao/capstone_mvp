@@ -1,0 +1,420 @@
+# planner.py - Execution Planning Layer
+# Responsibility: Convert NLU results into executable tool plans
+from __future__ import annotations
+import re
+from typing import Dict, Any, List, Optional, Callable
+
+from nlu import NLUResult
+
+
+# ========== EXECUTION PLAN DATACLASS ==========
+class ExecutionPlan:
+    """Structured execution plan"""
+    def __init__(
+        self,
+        tool_chain: List[Dict[str, Any]],
+        clarifications: List[str],
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        self.tool_chain = tool_chain
+        self.clarifications = clarifications
+        self.metadata = metadata or {}
+    
+    def is_ready(self) -> bool:
+        """Check if plan is ready to execute (no clarifications needed)"""
+        return len(self.clarifications) == 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization"""
+        return {
+            "tool_chain": self.tool_chain,
+            "clarifications": self.clarifications,
+            "metadata": self.metadata,
+            "ready": self.is_ready()
+        }
+
+
+# ========== EXECUTION PLANNER ==========
+class ExecutionPlanner:
+    """
+    Converts NLU results into concrete execution plans
+    Handles template routing, parameter building, and validation
+    """
+    
+    def __init__(self):
+        # SQL template registry
+        self.sql_templates = {
+            "mowing.labor_cost_month_top1": {
+                "builder": self._build_top_cost_params,
+                "required": ["month", "year"],
+                "optional": ["park_name"]
+            },
+            "mowing.cost_trend": {
+                "builder": self._build_trend_params,
+                "required": ["start_month", "end_month", "year"],
+                "optional": ["park_name"]
+            },
+            "mowing.last_mowing_date": {
+                "builder": self._build_last_date_params,
+                "required": [],
+                "optional": ["park_name"]
+            },
+            "mowing.cost_by_park_month": {
+                "builder": self._build_cost_by_park_params,
+                "required": ["month", "year"],
+                "optional": ["park_name"]
+            },
+            "mowing.cost_breakdown": {
+                "builder": self._build_breakdown_params,
+                "required": ["month", "year"],
+                "optional": ["park_name"]
+            }
+        }
+    
+    # ========== MAIN PLANNING ENTRY ==========
+    def plan(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """
+        Generate execution plan from NLU result
+        
+        Args:
+            nlu_result: Output from NLU layer
+        
+        Returns:
+            ExecutionPlan with tool chain and clarifications
+        """
+        intent = nlu_result.intent
+        
+        # Route to appropriate planner
+        if intent == "RAG":
+            return self._plan_rag(nlu_result)
+        elif intent == "SQL_tool":
+            return self._plan_sql(nlu_result)
+        elif intent == "RAG+SQL_tool":
+            return self._plan_rag_sql(nlu_result)
+        elif intent == "CV_tool":
+            return self._plan_cv(nlu_result)
+        elif intent == "RAG+CV_tool":
+            return self._plan_rag_cv(nlu_result)
+        else:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=[f"Unknown intent: {intent}"]
+            )
+    
+    # ========== RAG WORKFLOW ==========
+    def _plan_rag(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """Plan pure RAG workflow"""
+        slots = nlu_result.slots
+        query = nlu_result.raw_query
+        
+        # Determine search keywords based on domain
+        if slots["domain"] == "field_standards":
+            keywords = "field dimensions standards age group requirements length width pitching distance soccer baseball softball"
+            print(f"[Planner] RAG plan: FIELD STANDARDS domain")
+        else:
+            keywords = "mowing standard safety equipment frequency lane kilometer pricing"
+            print(f"[Planner] RAG plan: MOWING domain")
+        
+        tool_chain = [
+            {
+                "tool": "kb_retrieve",
+                "args": {
+                    "query": keywords,
+                    "top_k": 5
+                }
+            },
+            {
+                "tool": "sop_extract",
+                "args": {
+                    "schema": ["steps", "materials", "tools", "safety"]
+                }
+            }
+        ]
+        
+        return ExecutionPlan(
+            tool_chain=tool_chain,
+            clarifications=[],
+            metadata={"workflow": "RAG", "domain": slots["domain"]}
+        )
+    
+    # ========== SQL WORKFLOW ==========
+    def _plan_sql(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """Plan pure SQL workflow"""
+        slots = nlu_result.slots
+        query = nlu_result.raw_query
+        
+        # Step 1: Determine SQL template
+        template = self._route_sql_template(query, slots)
+        
+        # Step 2: Build parameters
+        template_config = self.sql_templates.get(template)
+        if not template_config:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=[f"Unknown SQL template: {template}"]
+            )
+        
+        param_builder = template_config["builder"]
+        params = param_builder(slots)
+        
+        # Step 3: Validate required parameters
+        clarifications = self._validate_params(template, params, template_config)
+        
+        tool_chain = [
+            {
+                "tool": "sql_query_rag",
+                "args": {
+                    "template": template,
+                    "params": params
+                }
+            }
+        ]
+        
+        print(f"[Planner] SQL plan: template={template}, params={params}")
+        
+        return ExecutionPlan(
+            tool_chain=tool_chain,
+            clarifications=clarifications,
+            metadata={"workflow": "SQL", "template": template}
+        )
+    
+    # ========== RAG+SQL WORKFLOW ==========
+    def _plan_rag_sql(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """Plan hybrid RAG+SQL workflow"""
+        slots = nlu_result.slots
+        query = nlu_result.raw_query
+        
+        # RAG component: retrieve context
+        rag_keywords = "mowing cost labor standard pricing rate"
+        
+        # SQL component: determine template and params
+        template = self._route_sql_template(query, slots)
+        template_config = self.sql_templates.get(template)
+        
+        if not template_config:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=[f"Unknown SQL template: {template}"]
+            )
+        
+        param_builder = template_config["builder"]
+        params = param_builder(slots)
+        
+        # Validate parameters
+        clarifications = self._validate_params(template, params, template_config)
+        
+        tool_chain = [
+            {
+                "tool": "kb_retrieve",
+                "args": {
+                    "query": rag_keywords,
+                    "top_k": 3
+                }
+            },
+            {
+                "tool": "sql_query_rag",
+                "args": {
+                    "template": template,
+                    "params": params
+                }
+            }
+        ]
+        
+        print(f"[Planner] RAG+SQL plan: template={template}, params={params}")
+        
+        return ExecutionPlan(
+            tool_chain=tool_chain,
+            clarifications=clarifications,
+            metadata={"workflow": "RAG+SQL", "template": template}
+        )
+    
+    # ========== CV WORKFLOW ==========
+    def _plan_cv(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """Plan pure CV workflow"""
+        slots = nlu_result.slots
+        image_uri = slots.get("image_uri")
+        
+        if not image_uri:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=["Please upload an image for computer vision analysis"]
+            )
+        
+        tool_chain = [
+            {
+                "tool": "cv_assess_rag",
+                "args": {
+                    "image_uri": image_uri,
+                    "topic_hint": "turf wear disease inspection guidelines"
+                }
+            }
+        ]
+        
+        print(f"[Planner] CV plan: image_uri={image_uri[:50]}...")
+        
+        return ExecutionPlan(
+            tool_chain=tool_chain,
+            clarifications=[],
+            metadata={"workflow": "CV"}
+        )
+    
+    # ========== RAG+CV WORKFLOW ==========
+    def _plan_rag_cv(self, nlu_result: NLUResult) -> ExecutionPlan:
+        """Plan hybrid RAG+CV workflow"""
+        slots = nlu_result.slots
+        image_uri = slots.get("image_uri")
+        
+        if not image_uri:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=["Please upload an image for analysis"]
+            )
+        
+        tool_chain = [
+            {
+                "tool": "kb_retrieve",
+                "args": {
+                    "query": "turf inspection maintenance repair standards",
+                    "top_k": 3
+                }
+            },
+            {
+                "tool": "cv_assess_rag",
+                "args": {
+                    "image_uri": image_uri,
+                    "topic_hint": "turf wear disease inspection guidelines"
+                }
+            }
+        ]
+        
+        print(f"[Planner] RAG+CV plan: image_uri={image_uri[:50]}...")
+        
+        return ExecutionPlan(
+            tool_chain=tool_chain,
+            clarifications=[],
+            metadata={"workflow": "RAG+CV"}
+        )
+    
+    # ========== SQL TEMPLATE ROUTING ==========
+    def _route_sql_template(self, query: str, slots: Dict[str, Any]) -> str:
+        """
+        Determine which SQL template to use based on query patterns
+        
+        Priority order: most specific patterns first
+        """
+        lowq = query.lower().strip()
+        domain = slots.get("domain")
+        
+        if domain != "mowing":
+            return "mowing.labor_cost_month_top1"  # default
+        
+        # Pattern 1: Superlative queries (highest, top, most expensive)
+        if any(k in lowq for k in ["highest", "top", "max", "most expensive"]) and "cost" in lowq:
+            return "mowing.labor_cost_month_top1"
+        
+        # Pattern 2: Recent/last queries
+        if any(k in lowq for k in ["last", "recent", "latest", "when was"]) and any(k in lowq for k in ["mow", "mowing"]):
+            return "mowing.last_mowing_date"
+        
+        # Pattern 3: Trend queries
+        if "trend" in lowq and "cost" in lowq:
+            return "mowing.cost_trend"
+        
+        # Pattern 4: Range queries (from X to Y)
+        if re.search(r'\bfrom\s+\w+\s+to\s+\w+', lowq) and "cost" in lowq:
+            return "mowing.cost_trend"
+        
+        # Pattern 5: Comparison queries
+        if any(k in lowq for k in ["compare", "across", "all parks"]) and "cost" in lowq:
+            return "mowing.cost_by_park_month"
+        
+        # Pattern 6: Breakdown queries
+        if any(k in lowq for k in ["breakdown", "detail", "break down"]):
+            return "mowing.cost_breakdown"
+        
+        # Pattern 7: By park queries
+        if "by park" in lowq or "each park" in lowq:
+            return "mowing.cost_by_park_month"
+        
+        # Default fallback
+        return "mowing.labor_cost_month_top1"
+    
+    # ========== SQL PARAMETER BUILDERS ==========
+    def _build_top_cost_params(self, slots: Dict[str, Any]) -> Dict[str, Any]:
+        """Build parameters for top cost query"""
+        return {
+            "month": slots.get("month"),
+            "year": slots.get("year"),
+            "park_name": slots.get("park_name")
+        }
+    
+    def _build_trend_params(self, slots: Dict[str, Any]) -> Dict[str, Any]:
+        """Build parameters for trend analysis query"""
+        return {
+            "year": slots.get("range_year") or slots.get("year"),
+            "start_month": slots.get("start_month") or slots.get("month") or 1,
+            "end_month": slots.get("end_month") or slots.get("month") or 12,
+            "park_name": slots.get("park_name")
+        }
+    
+    def _build_last_date_params(self, slots: Dict[str, Any]) -> Dict[str, Any]:
+        """Build parameters for last mowing date query"""
+        return {
+            "park_name": slots.get("park_name")
+        }
+    
+    def _build_cost_by_park_params(self, slots: Dict[str, Any]) -> Dict[str, Any]:
+        """Build parameters for cost-by-park query"""
+        return {
+            "month": slots.get("month"),
+            "year": slots.get("year"),
+            "park_name": slots.get("park_name")
+        }
+    
+    def _build_breakdown_params(self, slots: Dict[str, Any]) -> Dict[str, Any]:
+        """Build parameters for cost breakdown query"""
+        return {
+            "month": slots.get("month"),
+            "year": slots.get("year"),
+            "park_name": slots.get("park_name")
+        }
+    
+    # ========== PARAMETER VALIDATION ==========
+    def _validate_params(
+        self,
+        template: str,
+        params: Dict[str, Any],
+        config: Dict[str, Any]
+    ) -> List[str]:
+        """
+        Validate required parameters and generate clarification prompts
+        
+        Args:
+            template: SQL template name
+            params: Built parameters
+            config: Template configuration
+        
+        Returns:
+            List of clarification messages for missing parameters
+        """
+        clarifications = []
+        required = config.get("required", [])
+        
+        # Check each required parameter
+        missing = [k for k in required if not params.get(k)]
+        
+        if missing:
+            if template == "mowing.cost_trend":
+                clarifications.append(
+                    "Which time period would you like to see? (e.g., from January to June)"
+                )
+            elif template in ["mowing.cost_by_park_month", "mowing.cost_breakdown", "mowing.labor_cost_month_top1"]:
+                if "month" in missing or "year" in missing:
+                    clarifications.append(
+                        "Which month and year would you like to query?"
+                    )
+            elif template == "mowing.last_mowing_date":
+                # Park name is optional for this template
+                pass
+        
+        return clarifications

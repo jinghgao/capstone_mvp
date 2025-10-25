@@ -1,54 +1,90 @@
 # 🌿 Parks Maintenance Intelligence System
 
-A production-ready intelligent system for Vancouver parks maintenance operations, combining **RAG (Retrieval-Augmented Generation)**, **SQL analytics**, **LLM-enhanced insights**, and **interactive visualizations**.
+A production-ready intelligent system for Vancouver parks maintenance operations, combining **RAG (Retrieval-Augmented Generation)**, **SQL analytics**, **LLM-enhanced insights**, **VLM image analysis**, and **interactive visualizations**.
+
+![System Architecture](new_design.png)
 
 ---
 
 ## ✨ Key Features
 
-- 🤖 **LLM-Enhanced RAG**: Uses Ollama (llama3.2:3b) to transform technical documents into clear, actionable insights
-- 📊 **Interactive Visualizations**: Automatic chart generation (line charts, bar charts, timelines)
-- 🎯 **Semantic Intent Classification**: SentenceTransformer-based few-shot learning for accurate query routing
-- 🔍 **Multi-Modal Queries**: Supports text + SQL + document retrieval + image analysis
-- ⚡ **High Performance**: DuckDB for fast SQL queries, FAISS for semantic search
+- 🤖 **Dual LLM Integration**: Ollama (local) for text summarization + OpenRouter VLM for image analysis
+- 🏗️ **Clean Architecture**: NLU → Planner → Executor pattern for maintainability
+- 📊 **Interactive Visualizations**: Auto-generated charts (line, bar, timeline)
+- 🎯 **Semantic Intent Classification**: SentenceTransformer-based few-shot learning
+- 🔍 **Multi-Modal Queries**: Text + SQL + Document Retrieval + Image Analysis
+- ⚡ **High Performance**: DuckDB for SQL, FAISS for semantic search
+- 🏃 **Multi-Domain Support**: Mowing operations + Field standards
 
 ---
 
-## 🏗️ System Architecture
+## 🗺️ System Architecture
 
 ```
-User Query
-    ↓
-┌─────────────────────┐
-│  NLU (Semantic)     │  ← SentenceTransformer + Few-shot
-│  - Intent Detection │
-│  - Slot Extraction  │
-│  - Template Routing │
-└─────────────────────┘
-    ↓
-┌─────────────────────┐
-│  Executor           │
-│  - Tool Registry    │
-│  - Plan Execution   │
-└─────────────────────┘
-    ↓
-┌─────────────────────────────────────────┐
-│  Tools (Parallel/Sequential)            │
-│                                         │
-│  ┌──────────┐  ┌──────────┐  ┌───────┐│
-│  │   RAG    │  │   SQL    │  │  CV   ││
-│  │  FAISS   │  │ DuckDB   │  │ Mock  ││
-│  └──────────┘  └──────────┘  └───────┘│
-└─────────────────────────────────────────┘
-    ↓
-┌─────────────────────┐
-│  Composer           │  ← LLM (Ollama) for summarization
-│  - LLM Enhancement  │
-│  - Chart Config     │
-│  - Markdown Format  │
-└─────────────────────┘
-    ↓
-Frontend (React + Recharts)
+User Query + Optional Image
+        ↓
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 1: NLU (Natural Language Understanding)            │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • Intent Classification (5 intents)                      │
+│  • Slot Filling (domain, time, location, image)          │
+│  • Multimodal Consistency Check                           │
+│                                                           │
+│  Model: sentence-transformers/all-MiniLM-L6-v2           │
+│  Method: Prototype-based semantic matching (zero-shot)   │
+│                                                           │
+│  Output: {intent, confidence, slots, raw_query}          │
+└──────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 2: Planner (Execution Planning)                   │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • Template Routing (5 SQL templates)                    │
+│  • Tool Chain Selection                                   │
+│  • Parameter Validation                                   │
+│  • Clarification Generation                               │
+│                                                           │
+│  Strategies:                                              │
+│  • RAG: kb_retrieve → sop_extract                        │
+│  • SQL: sql_query_rag with template                      │
+│  • RAG+SQL: kb_retrieve → sql_query_rag                  │
+│  • CV: cv_assess_rag                                      │
+│  • RAG+CV: kb_retrieve → cv_assess_rag                   │
+│                                                           │
+│  Output: {tool_chain, clarifications, metadata}          │
+└──────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 3: Executor (Tool Orchestration)                  │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│                                                           │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────┐        │
+│  │   RAG    │  │   SQL    │  │  VLM (Cloud)   │        │
+│  │ FAISS/   │  │ DuckDB   │  │  Claude 3      │        │
+│  │  BM25    │  │    +5    │  │  Haiku         │        │
+│  │          │  │Templates │  │ (OpenRouter)   │        │
+│  └──────────┘  └──────────┘  └────────────────┘        │
+│                                                           │
+│  ┌────────────────────────────────────────────────────┐ │
+│  │  Local LLM (Ollama - llama3.2:3b)                  │ │
+│  │  Summarizes RAG content into coherent answers      │ │
+│  └────────────────────────────────────────────────────┘ │
+│                                                           │
+│  Output: {evidence, logs, errors, success}               │
+└──────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────┐
+│  STAGE 4: Composer (Response Generation)                 │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  • Smart content detection                                │
+│  • Chart configuration (line/bar/timeline)                │
+│  • LLM-enhanced formatting                                │
+│  • Markdown generation                                    │
+│                                                           │
+│  Output: {answer_md, tables, charts, citations}          │
+└──────────────────────────────────────────────────────────┘
+        ↓
+Frontend (React + Recharts + Modern UI)
 ```
 
 ---
@@ -58,129 +94,118 @@ Frontend (React + Recharts)
 ```
 capstone_mvp/
 │
-├── Backend (FastAPI)
-│   ├── app.py               # FastAPI server (/health, /nlu/parse, /agent/answer)
-│   ├── nlu.py               # Semantic intent classification + slot extraction
-│   ├── executor.py          # Tool orchestration and execution
-│   ├── composer.py          # LLM-enhanced answer generation + chart config
+├── Backend (FastAPI) - Refactored Architecture
+│   ├── app.py                  # FastAPI server with 7 endpoints
+│   │                           # /health, /nlu/parse, /plan/generate, 
+│   │                           # /execute/run, /agent/answer, /debug/pipeline, /info
+│   │
+│   ├── Core Modules (3-Layer Architecture)
+│   │   ├── nlu.py              # Intent classification + Slot filling ONLY
+│   │   ├── planner.py          # ✨ NEW: Execution planning + Template routing
+│   │   └── executor.py         # Tool orchestration + Evidence collection
+│   │
+│   ├── composer.py             # LLM-enhanced answer generation
 │   │
 │   ├── Tools/
-│   │   ├── rag.py           # FAISS/BM25 retrieval + SOP extraction
-│   │   ├── sql_tool.py      # DuckDB SQL templates (5 templates)
-│   │   └── cv_tool.py       # Computer vision (mock + RAG)
+│   │   ├── rag.py              # FAISS/BM25 retrieval (PDF + TXT support)
+│   │   ├── sql_tool.py         # DuckDB templates (5 analytics queries)
+│   │   └── cv_tool.py          # OpenRouter VLM (Claude 3 Haiku)
+│   │                           # ⚠️ Requires OPENROUTER_API_KEY
 │   │
-│   ├── config.py            # Configuration and paths
+│   ├── config.py               # Configuration and paths
+│   ├── .env                    # ⚠️ API keys (not in git) - REQUIRED for VLM
+│   ├── .env.example            # Template for API keys
 │   │
 │   └── data/
 │       ├── 6 Mowing Reports to Jun 20 2025.xlsx
 │       ├── rag_docs/
-│       │   └── mowing_standard.pdf
-│       └── faiss_index/     # Auto-generated FAISS index
+│       │   ├── mowing_standard.pdf
+│       │   └── field_standards.txt      # Sports field dimensions
+│       └── faiss_index/                 # Auto-generated vector index
 │
-└── Frontend (React + Vite)
-    └── parks-ui/
-        ├── src/
-        │   ├── App.jsx      # Main UI with chart rendering
-        │   ├── App.css      # Modern styling
-        │   └── main.jsx
-        ├── package.json
-        └── vite.config.js
+├── Frontend (React + Vite)
+│   └── parks-ui/
+│       ├── src/
+│       │   ├── App.jsx                  # Updated for new architecture
+│       │   │                           # - Clarifications support
+│       │   │                           # - Debug info display
+│       │   ├── App.css                  # Modern gradient design
+│       │   └── main.jsx
+│       ├── package.json
+│       └── vite.config.js
+│
+└── Data Preparation
+    └── data_prep/
+        └── convert_field_standards.py   # CSV to RAG document converter
 ```
-
----
-
-## 📊 Supported Query Types
-
-### 1. **Cost Analysis** (RAG + SQL)
-**Example**: *"Which park had the highest mowing cost in March 2025?"*
-
-**System Response**:
-- 🏆 SQL query result with park name and cost
-- 📚 LLM-summarized context from mowing standards
-- 📊 Bar chart visualization
-- 📄 Data table
-- 🔗 Citations to source documents
-
-**SQL Template**: `mowing.labor_cost_month_top1`
-
----
-
-### 2. **Trend Analysis** (SQL + Charts)
-**Example**: *"Show mowing cost trend from January to June 2025"*
-
-**System Response**:
-- 📈 Multi-line chart (top 10 parks by cost)
-- 📊 Monthly cost breakdown
-- 📉 Trend data table
-
-**SQL Template**: `mowing.cost_trend`
-
----
-
-### 3. **Park Comparison** (SQL + Charts)
-**Example**: *"Compare mowing costs across all parks in March 2025"*
-
-**System Response**:
-- 📊 Bar chart ranking all parks
-- 💰 Total and average costs
-- 📋 Detailed comparison table
-
-**SQL Template**: `mowing.cost_by_park_month`
-
----
-
-### 4. **Last Activity Tracking** (SQL + Timeline)
-**Example**: *"When was the last mowing at Cambridge Park?"*
-
-**System Response**:
-- 📅 Timeline visualization
-- 🕒 Last mowing date
-- 📊 Session count and total cost
-
-**SQL Template**: `mowing.last_mowing_date`
-
----
-
-### 5. **SOP Queries** (Pure RAG)
-**Example**: *"What are the mowing steps and safety requirements?"*
-
-**System Response**:
-- 📋 Structured steps, materials, tools, safety items
-- 📚 Extracted from PDF standards
-- 🔗 Source citations
-
-**Tools**: `kb_retrieve` + `sop_extract`
-
----
-
-### 6. **Detailed Breakdown** (SQL)
-**Example**: *"Show cost breakdown by activity type for Garden Park"*
-
-**SQL Template**: `mowing.cost_breakdown`
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Ollama (for LLM enhancement)
+- **Python 3.11+**
+- **Node.js 18+**
+- **Ollama** (for local LLM summarization)
+- **OpenRouter API Key** ⚠️ **REQUIRED for image analysis**
 
-### 1️⃣ Install Ollama (LLM)
+---
+
+### 1️⃣ Install Ollama (Local LLM)
 
 ```bash
 # macOS
 brew install ollama
 
-# Start Ollama
+# Start Ollama app
 open -a Ollama
 
-# Download model
+# Download model (2GB, one-time)
 ollama pull llama3.2:3b
+
+# Verify installation
+curl http://localhost:11434/api/tags
 ```
 
-### 2️⃣ Setup Backend
+**What Ollama does**: Summarizes RAG documents into clear, concise answers locally.
+
+---
+
+### 2️⃣ Get OpenRouter API Key (For VLM Image Analysis)
+
+⚠️ **REQUIRED** for image analysis features. Without this, image uploads will show a setup message.
+
+#### **Step-by-Step:**
+
+1. **Visit OpenRouter:**
+   ```
+   https://openrouter.ai/
+   ```
+
+2. **Sign Up / Log In:**
+   - Create a free account (Google/GitHub login supported)
+
+3. **Get Free Credits:**
+   - New users get **$5-10 free credits**
+   - Enough for ~2,500 image analyses
+
+4. **Create API Key:**
+   - Go to: https://openrouter.ai/keys
+   - Click "Create Key"
+   - Copy the key (starts with `sk-or-v1-...`)
+   - **⚠️ Save it immediately** (only shown once!)
+
+5. **Optional: Add More Credits:**
+   - Visit: https://openrouter.ai/credits
+   - Add credits if needed (not required for testing)
+
+**Cost**: ~$0.002 per image with Claude 3 Haiku
+
+**Free Alternative**: Use `google/gemini-2.0-flash-exp:free` model (edit `cv_tool.py`)
+
+---
+
+### 3️⃣ Setup Backend
 
 ```bash
 # Create environment
@@ -190,22 +215,48 @@ conda activate capstone
 # Install dependencies
 pip install -r requirements.txt
 
-# Start server
+# ⚠️ CRITICAL: Configure API keys
+cp .env.example .env
+
+# Edit .env file and add your OpenRouter API key:
+nano .env  # or use any text editor
+```
+
+**Your .env file should look like this:**
+```bash
+# OpenRouter API Key (REQUIRED for image analysis)
+OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
+
+# Optional: Ollama configuration (defaults work)
+# OLLAMA_BASE_URL=http://localhost:11434/v1
+# OLLAMA_MODEL=llama3.2:3b
+```
+
+**Verify configuration:**
+```bash
+# Test environment setup
+python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('✅ API Key:', 'SET' if os.getenv('OPENROUTER_API_KEY') else '❌ NOT SET')"
+```
+
+**Start server:**
+```bash
 uvicorn app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 **Backend runs at**: http://127.0.0.1:8000
 
-### 3️⃣ Setup Frontend
+**Check health:**
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+---
+
+### 4️⃣ Setup Frontend
 
 ```bash
-# Navigate to frontend
 cd parks-ui
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
 
@@ -213,23 +264,37 @@ npm run dev
 
 ---
 
-## 🔌 API Endpoints
+## 📌 API Endpoints (New Architecture)
 
-| Method | Endpoint | Description | Request Body |
-|--------|----------|-------------|--------------|
-| GET | `/health` | System status and RAG mode | - |
-| POST | `/nlu/parse` | Intent classification and slot extraction | `{"text": "...", "image_uri": "..."}` |
-| POST | `/agent/answer` | Complete RAG+SQL+LLM pipeline | `{"text": "...", "image_uri": "..."}` |
+| Method | Endpoint | Description | Response |
+|--------|----------|-------------|----------|
+| **GET** | `/health` | System health check | Components status, RAG mode |
+| **GET** | `/info` | System architecture info | Layers, capabilities, templates |
+| **POST** | `/nlu/parse` | ✨ Stage 1: Intent classification | `{intent, confidence, slots}` |
+| **POST** | `/plan/generate` | ✨ Stage 2: Generate execution plan | `{tool_chain, clarifications}` |
+| **POST** | `/execute/run` | ✨ Stage 3: Execute tool chain | `{evidence, logs, errors}` |
+| **POST** | `/agent/answer` | 🚀 **Main endpoint** (all stages) | `{answer_md, tables, charts}` |
+| **POST** | `/debug/pipeline` | 🐛 Debug each stage | Stage-by-stage breakdown |
 
-### Example Response (`/agent/answer`)
+### 🎯 Main Endpoint: `/agent/answer`
 
+**Request:**
 ```json
 {
-  "answer_md": "### 🏆 Results\n\n**Cambridge Park** had the highest mowing cost...",
+  "text": "Which park had the highest mowing cost in March 2025?",
+  "image_uri": null
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "answer_md": "### 🏆 Results\n\n**Cambridge Park** had the highest cost...",
   "tables": [{
     "name": "Top Park by Mowing Cost (3/2025)",
     "columns": ["park", "total_cost"],
-    "rows": [{"park": "Cambridge Park", "total_cost": 1523.45}]
+    "rows": [{"park": "Cambridge", "total_cost": 12500.50}]
   }],
   "charts": [{
     "type": "bar",
@@ -240,149 +305,301 @@ npm run dev
     "title": "Reference Document",
     "source": "mowing_standard.pdf#p12"
   }],
-  "logs": [...]
+  "clarifications": [],
+  "debug": {
+    "nlu": {"intent": "RAG+SQL_tool", "confidence": 0.89},
+    "plan": {"tool_chain": [...], "ready": true},
+    "execution": {"tools_executed": 2, "success": true}
+  }
+}
+```
+
+**Clarification Response** (when parameters missing):
+```json
+{
+  "status": "need_clarification",
+  "clarifications": [
+    "Which month and year would you like to query?"
+  ],
+  "answer_md": "I need more information..."
 }
 ```
 
 ---
 
-## 🧠 NLU Intent Classification
+## 🧠 New Architecture: NLU → Planner → Executor
 
-Uses **SentenceTransformer** (all-MiniLM-L6-v2) with few-shot prototypes:
+### **Stage 1: NLU (nlu.py)**
 
-| Intent | Triggers | Tools |
-|--------|----------|-------|
-| `RAG+SQL_tool` | "highest cost", "top park" + cost query | kb_retrieve → sql_query_rag → LLM summary |
-| `SQL_tool` | "trend", "compare", "breakdown" | sql_query_rag → chart generation |
-| `RAG` | "steps", "procedure", "safety", "how to" | kb_retrieve → sop_extract |
-| `CV_tool` | image upload | cv_assess_rag |
-| `RAG+CV_tool` | image + text query | kb_retrieve → cv_assess_rag |
+**Responsibility**: Understand user intent
+
+**Input**: `{text, image_uri}`
+
+**Output**: `{intent, confidence, slots, raw_query}`
+
+**Intent Classes**:
+- `RAG` - Pure document retrieval
+- `SQL_tool` - Database queries
+- `RAG+SQL_tool` - Hybrid (context + data)
+- `CV_tool` - Image analysis only
+- `RAG+CV_tool` - Image + document context
+
+**Key Features**:
+- SentenceTransformer-based prototype matching
+- Rule-based slot filling (time, location, domain)
+- Multimodal consistency (CV requires image)
+- Keyword-triggered intent refinement
 
 ---
 
-## 📈 SQL Templates
+### **Stage 2: Planner (planner.py)** ✨ NEW
 
-| Template Name | Purpose | Parameters | Returns |
-|---------------|---------|------------|---------|
-| `mowing.labor_cost_month_top1` | Find park with highest cost | month, year | 1 row (top park) |
-| `mowing.cost_trend` | Monthly cost trend | start_month, end_month, year, park_name? | Time series data |
-| `mowing.cost_by_park_month` | Compare all parks | month, year | All parks ranked |
-| `mowing.last_mowing_date` | Last activity date | park_name? | Last mowing date(s) |
-| `mowing.cost_breakdown` | Detailed by activity type | park_name?, month?, year | Activity breakdown |
+**Responsibility**: Convert NLU results into execution plans
 
----
+**Input**: `NLUResult`
 
-## 🤖 LLM Integration (Ollama)
+**Output**: `{tool_chain, clarifications, metadata, ready}`
 
-The system uses **Ollama** with **llama3.2:3b** to enhance RAG content:
+**Key Features**:
+- Template routing (5 SQL templates)
+- Parameter validation
+- Missing parameter detection
+- Tool chain construction
 
-### What it does:
-- Transforms raw PDF text into coherent summaries
-- Provides context for SQL results
-- Explains standards and guidelines in plain language
-
-### Configuration (composer.py):
+**Example Plan**:
 ```python
-USE_LOCAL_LLM = True
-OLLAMA_BASE_URL = "http://localhost:11434/v1"
-OLLAMA_MODEL = "llama3.2:3b"
+{
+  "tool_chain": [
+    {"tool": "kb_retrieve", "args": {"query": "...", "top_k": 3}},
+    {"tool": "sql_query_rag", "args": {"template": "...", "params": {...}}}
+  ],
+  "clarifications": [],
+  "metadata": {"workflow": "RAG+SQL", "template": "mowing.labor_cost_month_top1"},
+  "ready": true
+}
 ```
 
-### Fallback:
-If Ollama is unavailable, automatically falls back to simple text formatting.
+---
+
+### **Stage 3: Executor (executor.py)**
+
+**Responsibility**: Execute tool calls and collect evidence
+
+**Input**: `{tool_chain, slots}`
+
+**Output**: `{evidence, logs, errors, success}`
+
+**Key Features**:
+- Sequential tool execution
+- Evidence accumulation
+- Error handling and logging
+- Performance tracking
 
 ---
 
-## 📊 Chart Types
+## 🖼️ VLM Image Analysis (Powered by OpenRouter)
 
-The system automatically generates appropriate visualizations:
+### **Setup (REQUIRED for image features)**
 
-| Chart Type | Used For | Libraries |
-|------------|----------|-----------|
-| 📈 Line Chart | Cost trends over time | Recharts |
-| 📊 Bar Chart | Park cost comparison | Recharts |
-| 📊 Stacked Bar | Activity type breakdown | Recharts |
-| 📅 Timeline | Last mowing dates | Custom React component |
+1. **Get API Key** (see Quick Start section above)
 
----
+2. **Configure `.env`:**
+   ```bash
+   OPENROUTER_API_KEY=sk-or-v1-your-key-here
+   ```
 
-## 🧪 Testing
+3. **Restart backend:**
+   ```bash
+   # Stop current process (Ctrl+C)
+   python app.py
+   ```
 
-### Health Check
+4. **Verify setup:**
+   ```bash
+   # Should show: ✅ API Key: SET
+   python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('✅ API Key:', 'SET' if os.getenv('OPENROUTER_API_KEY') else '❌ NOT SET')"
+   ```
+
+### **Models Available**
+
+Edit `cv_tool.py` line 27 to change model:
+
+```python
+# Default (recommended)
+VLM_MODEL = "anthropic/claude-3-haiku"  # $0.25/1M tokens
+
+# Free alternatives
+# VLM_MODEL = "google/gemini-2.0-flash-exp:free"  # FREE
+# VLM_MODEL = "google/gemini-flash-1.5:free"      # FREE
+
+# Premium options
+# VLM_MODEL = "anthropic/claude-3.5-sonnet"       # Best quality ($3/1M)
+# VLM_MODEL = "openai/gpt-4o-mini"                # Good balance ($0.15/1M)
+```
+
+### **What VLM Does**
+
+- **Field Condition Assessment**: 1-10 score with detailed analysis
+- **Turf Health Evaluation**: Grass height, uniformity, patches
+- **Maintenance Detection**: Mowing, reseeding, line marking needs
+- **Safety Hazards**: Standing water, holes, damaged equipment
+- **AI Recommendations**: Prioritized action items
+
+### **Usage Example**
+
 ```bash
-curl http://127.0.0.1:8000/health
+# Upload image via frontend, then ask:
+"Assess this field condition"
+"Does this field need mowing?"
+"Is this suitable for U15 soccer?"
 ```
 
-### NLU Parse
-```bash
-curl -X POST http://127.0.0.1:8000/nlu/parse \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Which park had the highest mowing cost in March 2025?"}'
-```
+### **Cost Analysis**
 
-### Full Agent Answer
-```bash
-curl -X POST http://127.0.0.1:8000/agent/answer \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Show mowing cost trend from January to June 2025"}'
-```
+| Model | Cost per Image | Quality | Speed |
+|-------|----------------|---------|-------|
+| Claude 3 Haiku | ~$0.002 | Excellent | Fast |
+| Gemini Flash (free) | $0 | Good | Very Fast |
+| Claude 3.5 Sonnet | ~$0.015 | Best | Medium |
+| GPT-4o Mini | ~$0.001 | Very Good | Fast |
+
+**Free tier**: $5-10 credits = 2,500-5,000 images
 
 ---
 
-## 🎨 UI Features
+## 📊 Supported Query Types
 
-### Modern Design
-- Gradient backgrounds and shadows
-- Smooth animations and transitions
-- Responsive layout (desktop/tablet/mobile)
+### 1. 💰 **Mowing Cost Analysis** (RAG + SQL)
 
-### Interactive Elements
-- 5 preset query buttons
-- Real-time chart rendering
-- Collapsible sections
-- Execution logs viewer
+**SQL Templates**:
+- `mowing.labor_cost_month_top1` - Top park by cost
+- `mowing.cost_trend` - Monthly trends
+- `mowing.cost_by_park_month` - Park comparisons
+- `mowing.last_mowing_date` - Activity tracking
+- `mowing.cost_breakdown` - Detailed analysis
 
-### Chart Capabilities
-- Interactive tooltips
-- Legend filtering
-- Responsive sizing
-- Export-ready visualizations
+**Examples**:
+```
+"Which park had the highest mowing cost in March 2025?"
+"Show mowing cost trend from January to June 2025"
+"Compare mowing costs across all parks in March 2025"
+"When was the last mowing at Cambridge Park?"
+```
+
+**System Response**:
+- 📊 Interactive charts (auto-generated)
+- 📈 SQL query results
+- 📚 LLM-summarized context from standards
+- 🔗 Source citations
 
 ---
 
-## 📦 Dependencies
+### 2. 📋 **Standards & Procedures** (Pure RAG)
 
-### Backend
+**Examples**:
 ```
-fastapi>=0.111         # Web framework
-uvicorn[standard]>=0.30  # ASGI server
-pydantic>=2.7          # Data validation
-duckdb>=0.10.0         # SQL analytics
-pandas==2.2.0          # Data processing
-langchain              # RAG framework
-faiss-cpu>=1.7.4       # Vector search
-sentence-transformers  # Embeddings
-openai>=1.12.0         # LLM API (Ollama)
+"What are the mowing steps and safety requirements?"
+"What are the dimensions for U15 soccer?"
+"Show me baseball field requirements for U13"
+"What's the pitching distance for female softball U17?"
 ```
 
-### Frontend
+**System Response**:
+- 📖 Structured information (steps, dimensions)
+- 🤖 Ollama-enhanced summaries
+- 📚 Source citations from PDF/TXT
+
+**Supported Sports**:
+- Soccer (U5-U18, 11v11)
+- Baseball (U7-U18)
+- Softball (Male/Female, U7-Masters)
+- Cricket, Football, Rugby, Lacrosse, Ultimate Frisbee
+
+---
+
+### 3. 🖼️ **Image Analysis** (VLM + RAG)
+
+**⚠️ Requires OpenRouter API Key**
+
+**Examples**:
 ```
-react ^19.1.1
-recharts ^2.13.3       # Chart library
-vite ^7.1.7            # Build tool
+Upload image + "Assess this field condition"
+Upload image + "Does this field need mowing?"
+Upload image + "Is this field suitable for U15 soccer?"
 ```
+
+**System Response**:
+- 🎯 Condition score (1-10) and label
+- 🔍 Detected issues
+- 💡 Maintenance recommendations
+- 📚 RAG context from relevant standards
+- ⚡ Powered by Claude 3 Haiku
+
+---
+
+## 📈 Chart Visualization
+
+Auto-generated based on query type:
+
+| Chart Type | Used For | Features |
+|------------|----------|----------|
+| 📈 Line Chart | Cost trends | Multi-series, top 10 parks, interactive |
+| 📊 Bar Chart | Park comparisons | Sorted, rounded corners, color-coded |
+| 📊 Stacked Bar | Activity breakdown | Multi-series stacked |
+| 📅 Timeline | Last activity dates | Chronological with badges |
+
+**Library**: Recharts (React)
+**Rendering**: Client-side, fully interactive
+
+---
+
+## 🧪 Example Queries by Category
+
+### 💰 Cost Analysis
+
+| Query | Returns |
+|-------|---------|
+| "Which park had the highest mowing cost in March 2025?" | Bar chart, top park, cost |
+| "Show mowing cost trend from January to June 2025" | Line chart (top 10 parks) |
+| "Compare mowing costs across all parks in March 2025" | Bar chart, ranked table |
+| "When was the last mowing at Cambridge Park?" | Timeline, date, sessions |
+
+### 📋 Standards & Procedures
+
+| Query | Returns |
+|-------|---------|
+| "What are the mowing steps and safety requirements?" | SOP steps, materials, tools, safety |
+| "What are the dimensions for U15 soccer?" | Field dimensions, suitability |
+| "Show me baseball field requirements for U13" | Pitching distance, base paths |
+
+### 🖼️ Image Analysis (with uploaded image)
+
+| Query | Returns |
+|-------|---------|
+| "Assess this field condition" | Score, issues, recommendations |
+| "Does this field need mowing?" | Yes/no, grass height, priority |
+| "Is this field suitable for U15 soccer?" | Suitability, dimension analysis |
 
 ---
 
 ## 🔧 Configuration
 
-### Environment Variables (Optional)
+### Environment Variables (.env)
+
 ```bash
-# For OpenAI API (if not using Ollama)
-export OPENAI_API_KEY="your-key-here"
+# ⚠️ REQUIRED for image analysis
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
+
+# Optional: Ollama configuration (defaults work fine)
+# OLLAMA_BASE_URL=http://localhost:11434/v1
+# OLLAMA_MODEL=llama3.2:3b
+
+# Optional: Data paths (rarely needed)
+# DATA_DIR=/custom/path/to/data
 ```
 
 ### Data Paths (config.py)
+
 ```python
 DATA_DIR = "data"
 RAG_DOC_DIR = "data/rag_docs"
@@ -392,247 +609,264 @@ LABOR_XLSX = "data/6 Mowing Reports to Jun 20 2025.xlsx"
 
 ---
 
-## 📸 Screenshots
+## 📦 Dependencies
 
-### Query with Chart Visualization
+### Backend Core
 ```
-User: "Show mowing cost trend from January to June 2025"
-
-System Response:
-├── 📈 Line chart (top 10 parks)
-├── 📊 Trend Analysis summary
-├── 📋 Data table (517 rows)
-└── 🔗 Citations
+fastapi>=0.111          # Web framework
+uvicorn[standard]>=0.30 # ASGI server
+pydantic>=2.7           # Data validation
+python-dotenv>=1.0.0    # Environment variables
 ```
 
-### RAG + SQL Integration
+### Data & Analytics
 ```
-User: "Which park had the highest mowing cost in March 2025?"
-
-System Response:
-├── 🏆 Cambridge Park - $1,523.45
-├── 📚 LLM-summarized context from standards
-├── 📊 Bar chart
-└── 📄 Detailed cost table
+pandas==2.2.0           # Data processing
+duckdb>=0.10.0          # In-process SQL
+openpyxl>=3.1.0         # Excel support
 ```
 
----
-
-## 🎯 Use Cases
-
-### 1. **Budget Planning**
-- Identify high-cost parks
-- Analyze cost trends
-- Compare parks across periods
-
-### 2. **Operational Compliance**
-- Access mowing SOPs
-- Check safety requirements
-- Review standard procedures
-
-### 3. **Maintenance Scheduling**
-- Track last mowing dates
-- Identify overdue locations
-- Monitor service frequency
-
-### 4. **Performance Analysis**
-- Compare contractor costs
-- Analyze activity types
-- Track seasonal patterns
-
----
-
-## 🚧 Advanced Features
-
-### LLM-Enhanced RAG
-The system uses a lightweight LLM to:
-- Summarize technical PDF content
-- Provide context for SQL results
-- Explain standards in plain language
-- Generate actionable insights
-
-**Example Enhancement**:
+### RAG & NLP
 ```
-Raw PDF: "ITEM # CLASS OF WORK LOCATION UNIT PRICE COMPLETE..."
-
-LLM Summary: "Based on the reference documents, mowing costs vary by 
-park size and terrain complexity. Standard rates are $X per square 
-meter, with 2-week frequency requirements during growing season."
+langchain>=0.1.0        # RAG framework
+faiss-cpu>=1.7.4        # Vector search
+sentence-transformers>=2.2.0  # Embeddings
+pypdf>=3.17.0           # PDF parsing
 ```
 
-### Automatic Chart Selection
-The system intelligently selects chart types based on:
-- Query intent
-- Data structure
-- Number of data points
-- Template type
-
-### Smart Template Routing
-NLU uses pattern matching with priority levels:
-1. Exact matches (highest, top, max)
-2. Temporal queries (last, recent)
-3. Trend queries (from X to Y)
-4. Comparison queries (compare, across)
-5. Fallback to default
-
----
-
-## 🛠️ Development
-
-### Adding New SQL Templates
-
-1. **Define template function** in `sql_tool.py`:
-```python
-def _tpl_your_template(con, params):
-    sql = "SELECT ..."
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
-    return {"rows": rows, "rowcount": len(rows), "elapsed_ms": ...}
+### LLM Integration
+```
+openai>=1.12.0          # Client for Ollama + OpenRouter
 ```
 
-2. **Register template**:
-```python
-TEMPLATE_REGISTRY = {
-    "mowing.your_template": _tpl_your_template,
+### Frontend
+```json
+{
+  "react": "^19.1.1",
+  "recharts": "^2.13.3",
+  "vite": "^7.1.7"
 }
 ```
-
-3. **Add NLU pattern** in `nlu.py`:
-```python
-if "your_keyword" in lowq:
-    template_hint = "mowing.your_template"
-```
-
-4. **Add prototype examples**:
-```python
-INTENT_PROTOTYPES = {
-    "SQL_tool": [
-        "Your example question here",
-    ]
-}
-```
-
----
-
-## 🧪 Testing Examples
-
-### Test Different Query Types
-
-```python
-# Cost ranking
-"Which park had the highest mowing cost in March 2025?"
-
-# Trend analysis  
-"Show mowing cost trend from January to June 2025"
-
-# Park comparison
-"Compare mowing costs across all parks in March 2025"
-
-# Last activity
-"When was the last mowing at Cambridge Park?"
-
-# SOP queries
-"What are the mowing steps and safety requirements?"
-
-# Detailed breakdown
-"Show cost breakdown by activity type for all parks"
-```
-
----
-
-## 🎨 UI Customization
-
-The frontend uses a modern design system with:
-- CSS variables for easy theming
-- Responsive grid layout
-- Smooth animations
-- Custom chart styling
-
-Edit `App.css` to customize:
-```css
-:root {
-  --bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --card: #ffffff;
-  --blue: #3b82f6;
-  /* ... */
-}
-```
-
----
-
-## 🔒 Data Privacy
-
-- All processing happens locally
-- DuckDB runs in-process
-- Ollama runs on localhost
-- No external API calls (unless using OpenAI)
 
 ---
 
 ## 📈 Performance Metrics
 
-| Component | Response Time |
-|-----------|--------------|
-| NLU Classification | ~50ms |
-| SQL Query (DuckDB) | ~5-20ms |
-| RAG Retrieval (FAISS) | ~10-30ms |
-| LLM Summary (Ollama) | ~500ms-2s |
-| Total E2E | ~1-3s |
-
-*Tested on M1 MacBook Pro*
+| Component | Avg Response Time | Notes |
+|-----------|-------------------|-------|
+| NLU Classification | ~50ms | SentenceTransformer |
+| Planning | ~5ms | Template routing |
+| SQL Query | 5-20ms | DuckDB in-memory |
+| RAG Retrieval | 10-30ms | FAISS vector search |
+| Ollama Summary | 500ms-2s | Local LLM |
+| VLM Analysis | 1-3s | Claude Haiku API |
+| **Total E2E** | **1-5s** | Varies by complexity |
 
 ---
 
-## 🐛 Troubleshooting
+## 🛠️ Development Guide
 
-### Ollama not responding
+### Adding New SQL Templates
+
+See previous version (unchanged)
+
+### Adding New RAG Documents
+
+1. Add PDF or TXT to `data/rag_docs/`
+2. Delete old index: `rm -rf data/faiss_index/*`
+3. Restart backend (auto-rebuilds)
+
+### Testing the Pipeline
+
 ```bash
-# Check if running
+# Test each stage independently
+curl -X POST http://localhost:8000/nlu/parse \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What are mowing steps?"}'
+
+curl -X POST http://localhost:8000/plan/generate \
+  -H "Content-Type: application/json" \
+  -d '{"intent": "RAG", "confidence": 0.9, "slots": {...}}'
+
+curl -X POST http://localhost:8000/execute/run \
+  -H "Content-Type: application/json" \
+  -d '{"tool_chain": [...], "slots": {...}}'
+
+# Debug full pipeline
+curl -X POST http://localhost:8000/debug/pipeline \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Your query here"}'
+```
+
+---
+
+## 🛟 Troubleshooting
+
+### Ollama Not Responding
+```bash
+# Check status
 curl http://localhost:11434/api/tags
 
-# Restart Ollama
+# Restart
 open -a Ollama
 ```
 
-### FAISS index issues
-```bash
-# Delete and rebuild index
-rm -rf data/faiss_index/*
-# Restart backend (will auto-rebuild)
-```
+### VLM Returns "Not Configured" Message
 
-### NLU template mismatch
-Check terminal logs for:
-```
-[NLU] Template hint: mowing.labor_cost_month_top1
+**Problem**: Image analysis shows setup instructions instead of results
+
+**Solutions**:
+
+1. **Check API key exists:**
+   ```bash
+   cat .env | grep OPENROUTER_API_KEY
+   ```
+
+2. **Verify key is loaded:**
+   ```bash
+   python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.getenv('OPENROUTER_API_KEY', 'NOT SET'))"
+   ```
+
+3. **Test API key:**
+   ```bash
+   python test_openrouter.py  # See troubleshooting section
+   ```
+
+4. **Common issues:**
+   - ❌ Key has extra spaces or quotes
+   - ❌ .env file in wrong directory
+   - ❌ Backend not restarted after adding key
+   - ❌ Key is invalid or expired
+
+5. **Get new key:**
+   - Visit: https://openrouter.ai/keys
+   - Delete old key, create new one
+   - Update .env, restart backend
+
+### VLM Returns 401 Error
+
+**Problem**: `Error code: 401 - {'error': {'message': 'User not found.'}}`
+
+**Solution**: API key is invalid
+- Get new key from https://openrouter.ai/keys
+- Update .env file
+- Restart backend
+
+### Field Dimensions Not Found
+
+```bash
+# Check file exists
+ls data/rag_docs/field_standards.txt
+
+# Rebuild index
+rm -rf data/faiss_index/*
+# Restart backend
 ```
 
 ---
 
-## 🚀 Future Enhancements
+## 💰 Cost Analysis
 
-- [ ] Real computer vision model integration
-- [ ] Multi-document RAG (permits, horticulture)
-- [ ] Advanced LLM features (query rewriting, multi-turn dialogue)
-- [ ] Export reports (PDF, Excel)
-- [ ] User authentication and session management
+### Monthly Costs (100 users, 1000 queries/month)
+
+| Component | Cost | Notes |
+|-----------|------|-------|
+| Ollama (local) | $0 | Free, runs on your hardware |
+| VLM (Claude Haiku) | ~$0.20 | 100 images @ $0.002 each |
+| OpenRouter Free Tier | $0 | $5-10 free credits included |
+| **Total** | **< $1/month** | Extremely cost-effective |
+
+**Free Alternative**: Use `google/gemini-2.0-flash-exp:free` model → $0/month
+
+---
+
+## 🚧 Roadmap
+
+### ✅ Completed (v1.0)
+- [x] Three-layer architecture (NLU → Planner → Executor)
+- [x] Multi-domain RAG (mowing + field standards)
+- [x] 5 SQL analytics templates
+- [x] Interactive chart generation
+- [x] Ollama LLM integration
+- [x] Claude 3 Haiku VLM integration
+- [x] Parameter validation with clarifications
+- [x] Modern responsive UI with debug mode
+
+### 🔄 In Progress
+- [ ] Field dimension validation from images
+- [ ] Maintenance scheduling automation
+- [ ] Advanced safety hazard detection
+
+### 🎯 Future Enhancements
+- [ ] Multi-language support
+- [ ] Real-time satellite imagery
+- [ ] Automated field measurement
 - [ ] Mobile app (React Native)
-- [ ] Real-time data streaming
-- [ ] Advanced analytics dashboard
+- [ ] Export reports (PDF/Excel)
 
+---
+
+## 🔒 Security & Privacy
+
+- ✅ All SQL processing is local (DuckDB)
+- ✅ Text summarization is local (Ollama)
+- ✅ API keys in `.env` (not in git)
+- ⚠️ Image analysis uses cloud API (OpenRouter)
+- ✅ Images not stored, only analyzed in real-time
+- ✅ No user data sent to external services except images for VLM
+
+---
+
+## 👥 Team
+
+- **Project**: Northeastern University Capstone
+- **Partner**: Vancouver Parks Board
 
 ---
 
 ## 📄 License
 
-This project is part of a capstone project at Northeastern University.
+This project is developed as part of a capstone project at Northeastern University in collaboration with Vancouver Parks Board.
 
 ---
 
 ## 🙏 Acknowledgments
 
-- LangChain for RAG framework
-- Ollama for local LLM inference
-- Recharts for visualization
-- FastAPI for backend framework
-- Vancouver Parks Board for domain expertise
+- **LangChain** - RAG framework
+- **Ollama** - Local LLM inference
+- **OpenRouter** - VLM API aggregation
+- **Anthropic** - Claude 3 Haiku model
+- **Recharts** - Data visualization
+- **FastAPI** - Backend framework
+- **Vancouver Parks Board** - Domain expertise and data
+
+---
+
+## 📞 Support
+
+### Quick Checks
+
+1. **System Health**: http://127.0.0.1:8000/health
+2. **System Info**: http://127.0.0.1:8000/info
+3. **Ollama**: `curl http://localhost:11434/api/tags`
+4. **API Key**: `cat .env | grep OPENROUTER_API_KEY`
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| VLM not working | Check `.env` has `OPENROUTER_API_KEY` |
+| Ollama errors | Restart: `open -a Ollama` |
+| RAG returns nothing | Check `data/rag_docs/` has files |
+| Frontend blank | Check CORS settings in `app.py` |
+
+### Debug Mode
+
+```bash
+# Run debug pipeline
+curl -X POST http://localhost:8000/debug/pipeline \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Your query"}'
 ```
+
+**For detailed support**: Check backend logs with `uvicorn app:app --reload`
