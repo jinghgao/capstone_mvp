@@ -87,7 +87,7 @@ Use markdown formatting with bullet points."""
         # 回退到简单格式化
         return _format_rag_snippets_simple(rag_snippets)
 
-def _summarize_rag_context2(
+def _summarize_rag_context_dimension_comparison(
     rag_snippets: List[Dict[str, Any]], 
     query: str,
     sql_result_summary: str = "",
@@ -147,9 +147,9 @@ Task: Summarize the key information from the reference documents that answers th
 Use markdown formatting with bullet points."""
 
         # 调用 LLM
-        if USE_LOCAL_LLM:
+        if LLM_AVAILABLE:
             client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
-            model = OLLAMA_MODEL
+            model = OLLAMA_MODEL_FALL_BACK
         else:
             client = OpenAI()  # 需要设置 OPENAI_API_KEY 环境变量
             model = OPENAI_MODEL
@@ -299,7 +299,7 @@ def compose_answer(
                 citations.append({"title": "Field Standards Reference", "source": h.get("source", "")})
 
     # ========== SQL content handling ==========
-    if intent in ("SQL_tool", "RAG+SQL_tool", "SQL_tool_2"):
+    if intent in ("SQL_tool", "RAG+SQL_tool"):
         sql = ev.get("sql", {})
         rows = sql.get("rows", [])
         
@@ -332,7 +332,7 @@ def compose_answer(
             if rag_hits:
                 answer_md += "\n\n---\n\n"
                 # 使用 LLM 总结 RAG 上下文
-                rag_context = _summarize_rag_context2(
+                rag_context = _summarize_rag_context_dimension_comparison(
                     rag_snippets=rag_hits,
                     query=user_query,
                     sql_result_summary=sql_summary, sql=sql.get("rows", [])
@@ -350,11 +350,18 @@ def compose_answer(
             rag_hits = ev.get("kb_hits", [])
             if rag_hits:
                 answer_md += "\n\n---\n\n"
-                rag_context = _summarize_rag_context(
-                    rag_snippets=rag_hits,
-                    query=user_query,
-                    sql_result_summary=sql_summary
-                )
+                if nlu.get("slots", {}).get("domain") == "field_dimension":
+                    rag_context = _summarize_rag_context_dimension_comparison(
+                        rag_snippets=rag_hits,
+                        query=user_query,
+                        sql_result_summary=sql_summary, sql=sql.get("rows", [])
+                    )
+                else:
+                    rag_context = _summarize_rag_context(
+                        rag_snippets=rag_hits,
+                        query=user_query,
+                        sql_result_summary=sql_summary
+                    )
                 answer_md += rag_context
                 
                 for h in rag_hits[:3]:
@@ -456,8 +463,10 @@ def _get_table_name(template_hint: Optional[str], slots: Dict[str, Any]) -> str:
         return "Last Mowing Dates"
     elif template_hint == "mowing.cost_breakdown":
         return "Detailed Cost Breakdown"
-    elif template_hint == "field_dimension.compare_dimensions":
-        return "Field Dimension Comparison"
+    elif template_hint == "field_dimension.rectangular":
+        return "Rectangular Field Dimension Comparison"
+    elif template_hint == "field_dimension.diamond":
+        return "Diamond Field Dimension Comparison"
     return "Query Result"
 
 
@@ -487,9 +496,10 @@ def _generate_sql_summary(rows: List[Dict], template_hint: Optional[str], slots:
     elif template_hint == "mowing.cost_breakdown":
         return f"### 💰 Detailed Breakdown\n\n**{len(rows)} cost entries** by activity type."
     
-    elif template_hint == "field_dimension.compare_dimensions":
-        return f"### 📏 Field Dimension Comparison\n\nComparing dimensions for **{len(rows)} fields**."
-
+    elif template_hint == "field_dimension.rectangular":
+        return f"### 📏 Field Dimension Comparison\n\nComparing dimensions for **{len(rows)} rectangular fields**."
+    elif template_hint == "field_dimension.diamond":
+        return f"### 📐 Field Dimension Comparison\n\nComparing dimensions for **{len(rows)} diamond fields**."
     return f"### Results\n\nFound **{len(rows)} records**."
 
 

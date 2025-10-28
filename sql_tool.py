@@ -41,6 +41,8 @@ def _ensure_duck() -> duckdb.DuckDBPyConnection:
     field_size_path = os.path.join(DATA_DIR, "3 vsfs_master_inventory_fieldsizes.xlsx")
     diamond_field_size_df = pd.read_excel(field_size_path, sheet_name=1)
     diamond_field_size_df = diamond_field_size_df.fillna("None")
+    rectangular_field_size_df = pd.read_excel(field_size_path, sheet_name=0)
+    rectangular_field_size_df = rectangular_field_size_df.fillna("None")
     # Normalize column names
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -61,10 +63,13 @@ def _ensure_duck() -> duckdb.DuckDBPyConnection:
     # Re-create table
     con.execute("DROP TABLE IF EXISTS labor_data")
     con.execute("DROP TABLE IF EXISTS diamond_field_size_data")
+    con.execute("DROP TABLE IF EXISTS rectangular_field_size_data")
     con.register("labor_df", df)
     con.register("diamond_field_size_data", diamond_field_size_df)
+    con.register("rectangular_field_size_data", rectangular_field_size_df)
     con.execute("CREATE TABLE labor_data AS SELECT * FROM labor_df")
     con.execute("CREATE TABLE diamond_field_size_data AS SELECT * FROM diamond_field_size_data")
+    con.execute("CREATE TABLE rectangular_field_size_data AS SELECT * FROM rectangular_field_size_data")
     return con
 
 # -----------------------------
@@ -314,6 +319,21 @@ def _tpl_get_diamond_dimensions(con: duckdb.DuckDBPyConnection, params: Dict[str
     rows = con.execute(sql).fetchdf().to_dict(orient="records")
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
+
+def _tpl_get_rectangular_dimensions(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns rectangular field dimensions from the rectangular_field_size_data table.
+    """
+    sql = """
+    SELECT "Name of Field ", "Rectangular Field Dimension: Length - m ", "Rectangular Field Dimension: Width - m "
+    FROM rectangular_field_size_data
+    LIMIT 10;
+    """
+    t0 = time.time()
+    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    elapsed = int((time.time() - t0) * 1000)
+    return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
+
 # -----------------------------
 # Dispatcher registry
 # -----------------------------
@@ -333,7 +353,8 @@ TEMPLATE_REGISTRY: Dict[str, Callable[[duckdb.DuckDBPyConnection, Dict[str, Any]
     # NEW: 月度总览（详细分解）
     "mowing.cost_breakdown": _tpl_mowing_cost_breakdown_by_park,
     # NEW: 运动场地尺寸查询
-    "field_dimension.compare_dimensions": _tpl_get_diamond_dimensions,
+    "field_dimension.rectangular": _tpl_get_rectangular_dimensions,
+    "field_dimension.diamond": _tpl_get_diamond_dimensions,
 }
 
 # -----------------------------
