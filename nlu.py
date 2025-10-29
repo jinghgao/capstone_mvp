@@ -12,11 +12,7 @@ _ENCODER = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 # ========== INTENT PROTOTYPES ==========
 INTENT_PROTOTYPES = {
-    "RAG+SQL_tool": [
-        "Which park had the highest total mowing labor cost in March 2025?",
-        "Show me the most expensive park for mowing in April",
-        "What was the top mowing cost by location last month?",
-    ],
+    # RAG: textual guidance / procedures / standards
     "RAG": [
         "What are the mowing steps and safety requirements?",
         "How do I maintain the turf properly?",
@@ -26,25 +22,48 @@ INTENT_PROTOTYPES = {
         "Show me baseball field requirements for U13",
         "What's the pitching distance for female softball U17?",
     ],
+
+    # SQL_tool: structured results only (aggregations/ranking/lookup), no explanation
     "SQL_tool": [
         "How did total mowing costs trend from April to June 2025?",
         "Compare mowing costs across all parks in March 2025",
         "When was the last mowing at Cambridge Park?",
         "Show me all parks ranked by mowing cost",
+
+        # Moved from RAG+SQL_tool → SQL_tool (pure aggregation/ranking semantics)
+        "Which park had the highest total mowing labor cost in March 2025?",
+        "Show me the most expensive park for mowing in April",
+        "What was the top mowing cost by location last month?",
     ],
+
+    # RAG+SQL_tool: data + interpretation/grounding in mowing standards or policy
+    "RAG+SQL_tool": [
+        "Explain why mowing labor cost was highest in March 2025 based on mowing guidelines.",
+        "Interpret April mowing expenses using standard mowing practices.",
+        "Discuss whether last month’s top mowing cost aligns with mowing policy thresholds.",
+        "Explain anomalies in the 2024 mowing cost trend with reference to recommended maintenance frequency.",
+        "Compare irrigation repair costs in Q2 2025 and cite relevant maintenance standards.",
+        "Discuss reasons for above-average mowing cost in June using mowing procedures.",
+        "Interpret median mowing cost per park in Q3 2024 with reference to mowing standards.",
+        "Explain July YOY change in mowing costs using recommended mowing intervals.",
+    ],
+
+    # RAG+CV_tool: image + textual knowledge (needs references/explanations)
     "RAG+CV_tool": [
-        "Here is a picture. What's the estimated labour cost to repair the turf?",
-        "Check this image and tell me if the grass needs mowing",
-        "Analyze this field photo and estimate repair costs",
+        "Here is a picture. Estimate turf repair effort and reference the recommended mowing procedures.",
+        "Check this image and tell me if the grass needs mowing with references to the mowing guideline.",
+        "Analyze this field photo and recommend actions, citing the relevant mowing standard.",
     ],
+
+    # CV_tool: pure visual judgment (no textual citation)
     "CV_tool": [
         "Check this image and assess turf condition.",
-        "Analyze this photo of the field",
+        "Analyze this photo of the field.",
         "What do you see in this image?",
     ],
 }
 
-# Pre-encode all prototypes
+# ===== Encode prototypes (keep this right after INTENT_PROTOTYPES) =====
 _PROT_TEXTS = []
 _PROT_LABELS = []
 for label, samples in INTENT_PROTOTYPES.items():
@@ -52,6 +71,28 @@ for label, samples in INTENT_PROTOTYPES.items():
         _PROT_TEXTS.append(sample)
         _PROT_LABELS.append(label)
 _PROT_EMB = _ENCODER.encode(_PROT_TEXTS, normalize_embeddings=True)
+
+# ========= Keyword cue lists for refinement =========
+_SQL_ONLY_CUES = [
+    "sql:", "duckdb", "select ", " from ", " where ",
+    "group by", "table only", "numbers only", "no explanation",
+    "rows only", "csv", "data frame only", "return table",
+    "pivot table", "counts only", "scalar", "integer only",
+    "series output", "quartiles", "two columns", "list names only"
+]
+
+# SQL explain/interpretation cues (push to RAG+SQL_tool)
+_SQL_EXPLAIN_CUES = [
+    "explain", "interpret", "why", "reason", "rationale", "context",
+    "with notes", "with reference", "with references", "cite", "citation",
+    "commentary", "insights", "insight"
+]
+
+# Informational textual guidance cues (only used when not SQL-intent)
+_INFORMATIONAL_KEYWORDS = [
+    "steps", "procedure", "safety", "manual", "how to", "sop",
+    "dimensions", "requirements", "standards", "what are", "show me", "tell me"
+]
 
 # ========== ENTITY EXTRACTION UTILITIES ==========
 _MONTHS = {
@@ -65,53 +106,45 @@ _MONTH_ABBR = {k[:3]: v for k, v in _MONTHS.items()}
 
 
 def _normalize(text: Optional[str]) -> str:
-    """Normalize text to lowercase and strip whitespace"""
+    """Normalize text to lowercase and strip whitespace."""
     return (text or "").strip().lower()
 
 
 def _parse_month_year(text: str) -> Tuple[Optional[int], Optional[int]]:
-    """Extract month and year from text"""
+    """Extract single month and year from text."""
     t = _normalize(text).replace(",", " ")
-    
     # Pattern: YYYY-MM
     m = re.search(r"\b(20\d{2})-(\d{1,2})\b", t)
     if m:
         year, month = int(m.group(1)), int(m.group(2))
         if 1 <= month <= 12:
             return month, year
-    
-    # Pattern: Full month name
+    # Full month name
     for name, idx in _MONTHS.items():
         if re.search(rf"\b{name}\b", t):
-            month = idx
             year_match = re.search(r"\b(20\d{2})\b", t)
             year = int(year_match.group(1)) if year_match else None
-            return month, year
-    
-    # Pattern: Abbreviated month
+            return idx, year
+    # Abbrev month
     for abbr, idx in _MONTH_ABBR.items():
         if re.search(rf"\b{abbr}\b", t):
-            month = idx
             year_match = re.search(r"\b(20\d{2})\b", t)
             year = int(year_match.group(1)) if year_match else None
-            return month, year
-    
-    # Pattern: Year only
+            return idx, year
+    # Year only
     year_match = re.search(r"\b(20\d{2})\b", t)
     if year_match:
         return None, int(year_match.group(1))
-    
     return None, None
 
 
 def _parse_month_range(text: str) -> Tuple[Optional[int], Optional[int], Optional[int]]:
     """
-    Extract month range from text
+    Extract month range from text.
     Returns: (start_month, end_month, year)
     """
     t = _normalize(text)
-    
-    # Pattern: "from April to June 2025"
+    # Pattern: "from April to June 2025" / "between Apr and Jun 2025"
     m = re.search(
         r"(?:from|between)\s+([a-zA-Z]+)\s+(?:to|and)\s+([a-zA-Z]+)\s*(20\d{2})?",
         t
@@ -119,42 +152,38 @@ def _parse_month_range(text: str) -> Tuple[Optional[int], Optional[int], Optiona
     if m:
         m1, m2 = m.group(1).lower(), m.group(2).lower()
         year = int(m.group(3)) if m.group(3) else None
-        
+
         def to_month(s: str) -> Optional[int]:
             if s in _MONTHS:
                 return _MONTHS[s]
             return _MONTH_ABBR.get(s[:3])
-        
+
         return to_month(m1), to_month(m2), year
-    
-    # Pattern: "in June 2025" (single month as range)
+
+    # Pattern: "in June 2025"
     for name, idx in _MONTHS.items():
         if re.search(rf"\bin\s+{name}\b", t):
             year_match = re.search(r"\b(20\d{2})\b", t)
             year = int(year_match.group(1)) if year_match else None
             return idx, idx, year
-    
     for abbr, idx in _MONTH_ABBR.items():
         if re.search(rf"\bin\s+{abbr}\b", t):
             year_match = re.search(r"\b(20\d{2})\b", t)
             year = int(year_match.group(1)) if year_match else None
             return idx, idx, year
-    
     return None, None, None
 
 
 def _parse_park_name(text: str) -> Optional[str]:
-    """Extract park name from text"""
+    """Extract park name from text (very lightweight heuristic)."""
     t = _normalize(text)
-    
-    # Pattern: "in/at XXX Park"
+    # Pattern: "in/at/for XXX Park"
     m = re.search(r"(?:in|at|for)\s+([a-z][a-z\s\-\&]+(?:park|pk))\b", t)
     if m:
         park_raw = m.group(1).strip()
         park_clean = park_raw.replace(" park", "").replace(" pk", "").strip()
         return park_clean.title()
-    
-    # Known park names
+    # Known examples (extend as needed)
     known_parks = [
         "alice town", "cambridge", "garden", "grandview",
         "mcgill", "mcspadden", "mosaic creek", "cariboo",
@@ -163,30 +192,26 @@ def _parse_park_name(text: str) -> Optional[str]:
     for park in known_parks:
         if park in t:
             return park.title()
-    
     return None
 
 
 def _detect_domain(text: str) -> str:
-    """Detect query domain: mowing / field_standards / generic"""
+    """Detect query domain: mowing / field_standards / generic."""
     t = _normalize(text)
-    
     if any(k in t for k in ["mowing", "mow", "turf", "grass", "lawn"]):
         return "mowing"
-    
-    if any(k in t for k in ["soccer", "baseball", "softball", "cricket", 
-                            "football", "rugby", "field", "dimensions", 
-                            "pitching", "u10", "u11", "u12", "u13", 
+    if any(k in t for k in ["soccer", "baseball", "softball", "cricket",
+                            "football", "rugby", "field", "dimensions",
+                            "pitching", "u10", "u11", "u12", "u13",
                             "u14", "u15", "u16", "u17", "u18"]):
         return "field_standards"
-    
     return "generic"
 
 
 # ========== NLU RESULT DATACLASS ==========
 @dataclass
 class NLUResult:
-    """Output from NLU layer"""
+    """Output from NLU layer."""
     intent: str
     confidence: float
     slots: Dict[str, Any]
@@ -199,56 +224,63 @@ def parse_intent_and_slots(
     image_uri: Optional[str] = None
 ) -> NLUResult:
     """
-    Parse user input to extract intent and slots
-    
+    Parse user input to extract intent and slots.
+
     Args:
         text: User query text
         image_uri: Optional image URI
-    
+
     Returns:
         NLUResult with intent classification and extracted entities
     """
-    query = text.strip()
-    
-    # ========== STEP 1: Intent Classification ==========
+    query = (text or "").strip()
+    lowq = _normalize(query)
+
+    # ----- STEP 1: Prototype-based initial intent -----
     query_embedding = _ENCODER.encode([query], normalize_embeddings=True)
     similarities = util.cos_sim(query_embedding, _PROT_EMB).cpu().tolist()[0]
-    
-    # Get best matching prototype
     best_idx = max(range(len(similarities)), key=lambda i: similarities[i])
     intent = _PROT_LABELS[best_idx]
     confidence = float(similarities[best_idx])
-    
     print(f"[NLU] Initial intent: {intent} (confidence: {confidence:.3f})")
-    
-    # ========== STEP 2: Multimodal Intent Correction ==========
-    if image_uri:
-        print(f"[NLU] Image detected, adjusting intent to include CV")
-        if "CV" not in intent:
-            intent = "RAG+CV_tool" if intent in ["RAG", "SQL_tool", "RAG+SQL_tool"] else "CV_tool"
-    else:
-        if "CV" in intent:
-            print(f"[NLU] No image but CV intent detected, downgrading to RAG")
+
+    # ----- STEP 2: SQL cues take priority (no downgrade to RAG) -----
+    explanation_requested = False
+    if any(k in lowq for k in _SQL_ONLY_CUES):
+        intent = "SQL_tool"
+        explanation_requested = False
+        print("[NLU] SQL-only cues detected → intent=SQL_tool")
+    elif any(k in lowq for k in _SQL_EXPLAIN_CUES):
+        intent = "RAG+SQL_tool"
+        explanation_requested = True
+        print("[NLU] SQL-explain cues detected → intent=RAG+SQL_tool")
+
+    # ----- STEP 3: Informational fallback (only if not SQL) -----
+    if intent not in ("SQL_tool", "RAG+SQL_tool"):
+        if any(k in lowq for k in _INFORMATIONAL_KEYWORDS):
+            # Prefer RAG for informational queries (textual guidance).
             intent = "RAG"
-    
-    # ========== STEP 3: Keyword-Based Intent Refinement ==========
-    lowq = _normalize(query)
-    informational_keywords = [
-        "steps", "procedure", "safety", "manual", "how to", "sop",
-        "dimensions", "requirements", "standards", "what are", "show me", "tell me"
-    ]
-    
-    if any(k in lowq for k in informational_keywords):
-        if intent not in ["RAG", "RAG+CV_tool"]:
-            print(f"[NLU] Informational keywords detected, forcing to RAG")
-            intent = "RAG" if not image_uri else "RAG+CV_tool"
-    
-    # ========== STEP 4: Slot Filling (NER) ==========
+            print("[NLU] Informational keywords detected → intent=RAG")
+
+    # ----- STEP 4: CV-aware adjustment (conservative) -----
+    # If an image exists and current intent is RAG, upgrade to RAG+CV_tool.
+    if image_uri:
+        if intent == "RAG":
+            intent = "RAG+CV_tool"
+            print("[NLU] Image detected; upgrading RAG → RAG+CV_tool")
+        # If intent is SQL_tool / RAG+SQL_tool, do NOT force to CV; we keep SQL path.
+    else:
+        # No image but predicted a CV intent → downgrade to RAG (textual fallback).
+        if "CV" in intent:
+            print("[NLU] No image but CV intent detected; downgrading to RAG")
+            intent = "RAG"
+
+    # ----- STEP 5: Slot Filling (NER-lite) -----
     domain = _detect_domain(query)
     month, year = _parse_month_year(query)
     start_month, end_month, range_year = _parse_month_range(query)
     park_name = _parse_park_name(query)
-    
+
     slots = {
         "domain": domain,
         "month": month,
@@ -258,13 +290,14 @@ def parse_intent_and_slots(
         "range_year": range_year,
         "park_name": park_name,
         "image_uri": image_uri,
+        "explanation_requested": explanation_requested,  # used by planner
     }
-    
-    # ========== LOGGING ==========
+
+    # ----- LOGGING -----
     print(f"[NLU] Final intent: {intent}")
     print(f"[NLU] Domain: {domain}")
     print(f"[NLU] Extracted slots: {slots}")
-    
+
     return NLUResult(
         intent=intent,
         confidence=round(confidence, 3),

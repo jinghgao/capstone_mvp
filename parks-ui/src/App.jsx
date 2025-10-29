@@ -21,7 +21,6 @@ export default function App() {
   const [resp, setResp] = useState(null);
   const [error, setError] = useState("");
 
-  // Organized presets by category
   const presetCategories = [
     {
       category: "💰 Cost Analysis",
@@ -30,7 +29,7 @@ export default function App() {
         "Show mowing cost trend from January to June 2025",
         "Compare mowing costs across all parks in March 2025",
         "When was the last mowing at Cambridge Park?",
-      ]
+      ],
     },
     {
       category: "📋 Procedures & Standards",
@@ -39,7 +38,7 @@ export default function App() {
         "What are the dimensions for U15 soccer?",
         "Show me baseball field requirements for U13",
         "What's the pitching distance for female softball U17?",
-      ]
+      ],
     },
     {
       category: "🖼️ Image Analysis",
@@ -47,8 +46,8 @@ export default function App() {
         "Assess this field condition (upload image)",
         "Does this field need mowing? (upload image)",
         "Is this field suitable for soccer? (upload image)",
-      ]
-    }
+      ],
+    },
   ];
 
   async function callEndpoint(path) {
@@ -64,10 +63,16 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       if (!r.ok) {
         const errorData = await r.json().catch(() => ({}));
-        throw new Error(errorData.detail?.error || `${r.status} ${r.statusText}`);
+        const detail =
+          typeof errorData.detail === "string"
+            ? errorData.detail
+            : errorData.detail?.error || errorData.detail?.message || "";
+        throw new Error(detail || `${r.status} ${r.statusText}`);
       }
+
       const data = await r.json();
       setResp(data);
     } catch (e) {
@@ -79,29 +84,102 @@ export default function App() {
 
   function renderMarkdown(md) {
     if (!md) return null;
-    const html = md
-      .replace(/^### (.*$)/gim, '<h3 class="md-h3">$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2 class="md-h2">$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1 class="md-h1">$1</h1>')
-      .replace(/\*\*(.*?)\*\*/gim, "<strong>$1</strong>")
-      .replace(/^- (.*$)/gim, "<li>$1</li>")
-      .replace(/^(\d+)\. (.*$)/gim, "<li>$1. $2</li>")
-      .replace(/\n\n/g, "<br/><br/>");
+
+    // Very lightweight markdown renderer (headings, bold, lists, paragraphs)
+    let html = md;
+
+    // Headings
+    html = html.replace(/^### (.*)$/gim, '<h3 class="md-h3">$1</h3>');
+    html = html.replace(/^## (.*)$/gim, '<h2 class="md-h2">$1</h2>');
+    html = html.replace(/^# (.*)$/gim, '<h1 class="md-h1">$1</h1>');
+
+    // Bold
+    html = html.replace(/\*\*(.*?)\*\*/gim, "<strong>$1</strong>");
+
+    // Ordered lists
+    html = html.replace(/^\d+\.\s+(.*)$/gim, "<li>$1</li>");
+    // Unordered lists
+    html = html.replace(/^- (.*)$/gim, "<li>$1</li>");
+
+    // Convert blank lines to <br/><br/> to keep spacing
+    html = html.replace(/\n\n+/g, "<br/><br/>");
+
     return <div className="prose" dangerouslySetInnerHTML={{ __html: html }} />;
   }
 
-  // ✨ NEW: Clarifications component
+  function StatusBanner({ status, message }) {
+    if (!status || status === "OK") return null;
+
+    const map = {
+      NEEDS_CLARIFICATION: {
+        bg: "#fff3cd",
+        bd: "#ffc107",
+        emoji: "💡",
+        title: "More Information Needed",
+      },
+      UNSUPPORTED: {
+        bg: "#fde2e1",
+        bd: "#f44336",
+        emoji: "🚧",
+        title: "Not Supported Yet",
+      },
+    };
+
+    const styles = map[status] || {
+      bg: "#e7f3ff",
+      bd: "#2196f3",
+      emoji: "ℹ️",
+      title: status,
+    };
+
+    return (
+      <div
+        className="card"
+        style={{ marginTop: 16, background: styles.bg, borderColor: styles.bd }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <span style={{ fontSize: 20 }}>{styles.emoji}</span>
+          <div className="card-title" style={{ margin: 0 }}>
+            {styles.title}
+          </div>
+        </div>
+        {message && <div style={{ fontSize: 13 }}>{message}</div>}
+      </div>
+    );
+  }
+
   function ClarificationsView({ clarifications }) {
     if (!clarifications || !clarifications.length) return null;
     return (
-      <div className="card" style={{ marginTop: 16, background: "#fff3cd", borderColor: "#ffc107" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div
+        className="card"
+        style={{ marginTop: 16, background: "#fff3cd", borderColor: "#ffc107" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
           <span style={{ fontSize: 24 }}>💡</span>
-          <div className="card-title" style={{ margin: 0 }}>More Information Needed</div>
+          <div className="card-title" style={{ margin: 0 }}>
+            More Information Needed
+          </div>
         </div>
         <ul className="bullets">
           {clarifications.map((c, i) => (
-            <li key={i} style={{ fontSize: 14 }}>{c}</li>
+            <li key={i} style={{ fontSize: 14 }}>
+              {c}
+            </li>
           ))}
         </ul>
         <div style={{ marginTop: 12, fontSize: 13, color: "#856404" }}>
@@ -118,17 +196,20 @@ export default function App() {
       <div style={{ marginTop: 16 }}>
         {charts.map((chart, idx) => (
           <div key={idx} className="card" style={{ marginBottom: 16 }}>
-            <div className="card-title">
-              {chart.title || `Chart ${idx + 1}`}
-            </div>
+            <div className="card-title">{chart.title || `Chart ${idx + 1}`}</div>
             {chart.note && (
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 8, fontStyle: "italic" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#666",
+                  marginBottom: 8,
+                  fontStyle: "italic",
+                }}
+              >
                 {chart.note}
               </div>
             )}
-            <div style={{ width: "100%", height: 400 }}>
-              {renderChart(chart)}
-            </div>
+            <div style={{ width: "100%", height: 400 }}>{renderChart(chart)}</div>
           </div>
         ))}
       </div>
@@ -136,12 +217,12 @@ export default function App() {
   }
 
   function renderChart(chart) {
-    const chartType = chart.type;
+    const chartType = chart?.type;
     if (chartType === "line") return renderLineChart(chart);
     if (chartType === "bar") return renderBarChart(chart);
     if (chartType === "bar_stacked") return renderStackedBarChart(chart);
     if (chartType === "timeline") return renderTimeline(chart);
-    return <div className="muted">Unsupported chart type: {chartType}</div>;
+    return <div className="muted">Unsupported chart type: {String(chartType)}</div>;
   }
 
   function renderLineChart(chart) {
@@ -166,9 +247,19 @@ export default function App() {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey={chart.x_axis.field}
-            label={{ value: chart.x_axis.label, position: "insideBottom", offset: -5 }}
+            label={{
+              value: chart.x_axis.label,
+              position: "insideBottom",
+              offset: -5,
+            }}
           />
-          <YAxis label={{ value: chart.y_axis.label, angle: -90, position: "insideLeft" }} />
+          <YAxis
+            label={{
+              value: chart.y_axis.label,
+              angle: -90,
+              position: "insideLeft",
+            }}
+          />
           <Tooltip />
           {chart.legend && <Legend />}
           {chart.series.map((series, idx) => (
@@ -188,7 +279,7 @@ export default function App() {
   }
 
   function renderBarChart(chart) {
-    const chartData = chart.series[0].data.map((d) => ({
+    const chartData = (chart.series?.[0]?.data || []).map((d) => ({
       [chart.x_axis.field]: d.x,
       [chart.y_axis.field]: d.y,
     }));
@@ -199,21 +290,37 @@ export default function App() {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey={chart.x_axis.field}
-            label={{ value: chart.x_axis.label, position: "insideBottom", offset: -5 }}
+            label={{
+              value: chart.x_axis.label,
+              position: "insideBottom",
+              offset: -5,
+            }}
             angle={-15}
             textAnchor="end"
             height={80}
           />
-          <YAxis label={{ value: chart.y_axis.label, angle: -90, position: "insideLeft" }} />
+          <YAxis
+            label={{
+              value: chart.y_axis.label,
+              angle: -90,
+              position: "insideLeft",
+            }}
+          />
           <Tooltip />
-          <Bar dataKey={chart.y_axis.field} fill={chart.color || "#4CAF50"} radius={[8, 8, 0, 0]} />
+          <Bar
+            dataKey={chart.y_axis.field}
+            fill={chart.color || "#4CAF50"}
+            radius={[8, 8, 0, 0]}
+          />
         </BarChart>
       </ResponsiveContainer>
     );
   }
 
   function renderStackedBarChart(chart) {
-    const allXValues = [...new Set(chart.series.flatMap((s) => s.data.map((d) => d.x)))];
+    const allXValues = [
+      ...new Set(chart.series.flatMap((s) => s.data.map((d) => d.x))),
+    ];
     const chartData = allXValues.map((xVal) => {
       const dataPoint = { [chart.x_axis.field]: xVal };
       chart.series.forEach((series) => {
@@ -231,16 +338,31 @@ export default function App() {
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis
             dataKey={chart.x_axis.field}
-            label={{ value: chart.x_axis.label, position: "insideBottom", offset: -5 }}
+            label={{
+              value: chart.x_axis.label,
+              position: "insideBottom",
+              offset: -5,
+            }}
             angle={-15}
             textAnchor="end"
             height={80}
           />
-          <YAxis label={{ value: chart.y_axis.label, angle: -90, position: "insideLeft" }} />
+          <YAxis
+            label={{
+              value: chart.y_axis.label,
+              angle: -90,
+              position: "insideLeft",
+            }}
+          />
           <Tooltip />
           {chart.legend && <Legend />}
           {chart.series.map((series, idx) => (
-            <Bar key={series.name} dataKey={series.name} stackId="a" fill={colors[idx % colors.length]} />
+            <Bar
+              key={series.name}
+              dataKey={series.name}
+              stackId="a"
+              fill={colors[idx % colors.length]}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>
@@ -248,7 +370,7 @@ export default function App() {
   }
 
   function renderTimeline(chart) {
-    const sortedData = [...chart.data].sort((a, b) => {
+    const sortedData = [...(chart.data || [])].sort((a, b) => {
       if (chart.sort_order === "asc") return new Date(a.date) - new Date(b.date);
       return new Date(b.date) - new Date(a.date);
     });
@@ -263,18 +385,23 @@ export default function App() {
               gap: 16,
               marginBottom: 24,
               paddingBottom: 24,
-              borderBottom: idx < sortedData.length - 1 ? "1px solid #e0e0e0" : "none",
+              borderBottom:
+                idx < sortedData.length - 1 ? "1px solid #e0e0e0" : "none",
             }}
           >
             <div style={{ fontSize: 24, flexShrink: 0 }}>📅</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{item.park}</div>
+              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>
+                {item.park}
+              </div>
               <div style={{ color: "#666", fontSize: 14, marginBottom: 8 }}>
-                {new Date(item.date).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
+                {item.date
+                  ? new Date(item.date).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  : "—"}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <span
@@ -301,7 +428,10 @@ export default function App() {
                     fontWeight: 500,
                   }}
                 >
-                  ${item.cost?.toFixed(2) || "0.00"}
+                  $
+                  {typeof item.cost === "number"
+                    ? item.cost.toFixed(2)
+                    : "0.00"}
                 </span>
               </div>
             </div>
@@ -322,15 +452,20 @@ export default function App() {
               <table className="grid-table">
                 <thead>
                   <tr>
-                    {(t.columns || Object.keys((t.rows && t.rows[0]) || {})).map((c) => (
-                      <th key={c}>{c}</th>
-                    ))}
+                    {(t.columns || Object.keys((t.rows && t.rows[0]) || {})).map(
+                      (c) => (
+                        <th key={c}>{c}</th>
+                      )
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {(t.rows || []).map((row, rIdx) => (
                     <tr key={rIdx}>
-                      {(t.columns && t.columns.length ? t.columns : Object.keys(row)).map((c) => (
+                      {(t.columns && t.columns.length
+                        ? t.columns
+                        : Object.keys(row)
+                      ).map((c) => (
                         <td key={c}>{String(row[c])}</td>
                       ))}
                     </tr>
@@ -352,7 +487,8 @@ export default function App() {
         <ul className="bullets">
           {citations.map((c, i) => (
             <li key={i}>
-              {c.title || "source"} — <span className="muted">{c.source}</span>
+              {c.title || "source"} —{" "}
+              <span className="muted">{c.source || ""}</span>
             </li>
           ))}
         </ul>
@@ -368,11 +504,16 @@ export default function App() {
         <div className="logs">
           {logs.map((l, i) => (
             <div key={i} className="log-row">
-              <span className={`pill ${l.ok ? "ok" : "err"}`}>{l.ok ? "ok" : "err"}</span>
+              <span className={`pill ${l.ok ? "ok" : "err"}`}>
+                {l.ok ? "ok" : "err"}
+              </span>
               <span className="mono">{l.tool}</span>
               <span>({l.elapsed_ms} ms)</span>
               <span className="muted">
-                args: {Array.isArray(l.args_redacted) ? l.args_redacted.join(", ") : "-"}
+                args:{" "}
+                {Array.isArray(l.args_redacted)
+                  ? l.args_redacted.join(", ")
+                  : "-"}
               </span>
               {l.err && <span className="err-text">{l.err}</span>}
             </div>
@@ -382,16 +523,17 @@ export default function App() {
     );
   }
 
-  // ✨ NEW: Debug info view
   function DebugView({ debug }) {
     if (!debug) return null;
     return (
       <div className="mt">
         <details>
-          <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: 8 }}>
+          <summary
+            style={{ cursor: "pointer", fontWeight: 600, marginBottom: 8 }}
+          >
             🐛 Debug Information
           </summary>
-          <div className="card" style={{ background: "#f8f9fa" }}>
+        <div className="card" style={{ background: "#f8f9fa" }}>
             <pre className="json">{JSON.stringify(debug, null, 2)}</pre>
           </div>
         </details>
@@ -418,10 +560,16 @@ export default function App() {
         <div className="grid">
           <div className="col-main">
             <div className="card">
-              {/* Category-based presets */}
               {presetCategories.map((cat, catIdx) => (
                 <div key={catIdx} style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#64748b" }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      marginBottom: 8,
+                      color: "#64748b",
+                    }}
+                  >
                     {cat.category}
                   </div>
                   <div className="row wrap gap">
@@ -432,12 +580,16 @@ export default function App() {
                         onClick={() => {
                           setText(query.replace(" (upload image)", ""));
                           if (query.includes("upload image") && !imageUri) {
-                            alert("💡 Don't forget to upload an image for this query!");
+                            alert(
+                              "💡 Heads-up: image analysis works best if you upload an image."
+                            );
                           }
                         }}
                         style={{ fontSize: 12 }}
                       >
-                        {query.length > 40 ? query.substring(0, 37) + "..." : query}
+                        {query.length > 40
+                          ? query.substring(0, 37) + "..."
+                          : query}
                       </button>
                     ))}
                   </div>
@@ -465,13 +617,25 @@ export default function App() {
                       }
                       const url = URL.createObjectURL(f);
                       setImageUri(url);
+                      setTimeout(() => {
+                        if (url.startsWith("blob:")) {
+                          console.info(
+                            "Note: backend cannot fetch blob: URLs directly. Consider adding an upload endpoint or using base64."
+                          );
+                        }
+                      }, 0);
                     }}
                   />
                   📷 Upload Image
                 </label>
                 {imageUri && (
                   <>
-                    <img src={imageUri} alt="preview" className="thumb" style={{ maxHeight: 60 }} />
+                    <img
+                      src={imageUri}
+                      alt="preview"
+                      className="thumb"
+                      style={{ maxHeight: 60 }}
+                    />
                     <button
                       className="btn ghost"
                       onClick={() => setImageUri("")}
@@ -503,7 +667,9 @@ export default function App() {
                   className="btn primary"
                   disabled={loading}
                   onClick={() =>
-                    callEndpoint(activeTab === "agent" ? "/agent/answer" : "/nlu/parse")
+                    callEndpoint(
+                      activeTab === "agent" ? "/agent/answer" : "/nlu/parse"
+                    )
                   }
                 >
                   {loading ? "⏳ Processing..." : "🚀 Send"}
@@ -517,9 +683,16 @@ export default function App() {
           <aside className="col-side">
             <div className="card">
               <div className="label">✨ System Capabilities</div>
-              
+
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#64748b",
+                    marginBottom: 6,
+                  }}
+                >
                   💰 Cost Analysis
                 </div>
                 <ul className="bullets" style={{ fontSize: 13 }}>
@@ -531,7 +704,14 @@ export default function App() {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#64748b",
+                    marginBottom: 6,
+                  }}
+                >
                   📋 Standards & Procedures
                 </div>
                 <ul className="bullets" style={{ fontSize: 13 }}>
@@ -543,7 +723,14 @@ export default function App() {
               </div>
 
               <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#64748b",
+                    marginBottom: 6,
+                  }}
+                >
                   🖼️ Image Analysis (VLM)
                 </div>
                 <ul className="bullets" style={{ fontSize: 13 }}>
@@ -554,11 +741,21 @@ export default function App() {
                 </ul>
               </div>
 
-              <div style={{ marginTop: 16, padding: 12, background: "#f8f9fc", borderRadius: 8, fontSize: 12 }}>
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 12,
+                  background: "#f8f9fc",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+              >
                 <div style={{ fontWeight: 600, marginBottom: 4 }}>💡 Tips</div>
                 <div style={{ color: "#64748b", lineHeight: 1.5 }}>
-                  • Upload images for visual analysis<br/>
-                  • Ask about any sport or age group<br/>
+                  • Upload images for visual analysis
+                  <br />
+                  • Ask about any sport or age group
+                  <br />
                   • Combine data queries with standards
                 </div>
               </div>
@@ -568,39 +765,55 @@ export default function App() {
 
         <section className="card">
           <div className="label">Response</div>
-          {!resp && <div className="muted">No response yet. Try a query above!</div>}
+          {!resp && (
+            <div className="muted">No response yet. Try a query above!</div>
+          )}
           {resp && (
             <div className="stack">
-              {/* ✨ NEW: Handle clarifications */}
-              {activeTab === "agent" && resp.status === "need_clarification" && (
-                <ClarificationsView clarifications={resp.clarifications} />
+              {activeTab === "agent" && (
+                <StatusBanner status={resp.status} message={resp.message} />
               )}
+
+              {activeTab === "agent" &&
+                resp.clarifications &&
+                resp.clarifications.length > 0 && (
+                  <ClarificationsView clarifications={resp.clarifications} />
+                )}
 
               {resp.answer_md && <div>{renderMarkdown(resp.answer_md)}</div>}
               {activeTab === "agent" && <ChartsView charts={resp.charts} />}
               {activeTab === "agent" && <TablesView tables={resp.tables} />}
-              {activeTab === "agent" && <CitationsView citations={resp.citations} />}
+              {activeTab === "agent" && (
+                <CitationsView citations={resp.citations} />
+              )}
               {activeTab === "agent" && <LogsView logs={resp.logs} />}
               {activeTab === "agent" && <DebugView debug={resp.debug} />}
 
-              {/* ✨ UPDATED: NLU display logic */}
               {activeTab === "nlu" && (
                 <div className="stack">
                   <div className="card">
                     <div className="label">Intent</div>
-                    <pre className="json">{JSON.stringify(resp.intent, null, 2)}</pre>
+                    <pre className="json">
+                      {JSON.stringify(resp.intent, null, 2)}
+                    </pre>
                   </div>
                   <div className="card">
                     <div className="label">Confidence</div>
-                    <pre className="json">{JSON.stringify(resp.confidence, null, 2)}</pre>
+                    <pre className="json">
+                      {JSON.stringify(resp.confidence, null, 2)}
+                    </pre>
                   </div>
                   <div className="card">
                     <div className="label">Slots</div>
-                    <pre className="json">{JSON.stringify(resp.slots, null, 2)}</pre>
+                    <pre className="json">
+                      {JSON.stringify(resp.slots, null, 2)}
+                    </pre>
                   </div>
                   <div className="card">
                     <div className="label">Raw Query</div>
-                    <pre className="json">{JSON.stringify(resp.raw_query, null, 2)}</pre>
+                    <pre className="json">
+                      {JSON.stringify(resp.raw_query, null, 2)}
+                    </pre>
                   </div>
                   <div className="card">
                     <div className="label">Full Response</div>

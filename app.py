@@ -32,8 +32,8 @@ class AgentRequest(BaseModel):
 # ========== FastAPI App ==========
 app = FastAPI(
     title="Parks Maintenance Intelligence API",
-    version="1.0.0",
-    description="Modular NLU → Planner → Executor Architecture"
+    version="1.0.1",
+    description="Modular NLU → Planner → Executor → Composer Architecture"
 )
 
 # CORS middleware
@@ -61,7 +61,7 @@ def health_check():
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "architecture": "NLU → Planner → Executor",
+        "architecture": "NLU → Planner → Executor → Composer",
         "components": {
             "rag": {
                 "status": "active",
@@ -84,7 +84,7 @@ def health_check():
 def nlu_parse_endpoint(req: NLURequest):
     """
     Parse user input to extract intent and slots
-    
+
     Returns:
         {
             "intent": str,
@@ -95,7 +95,6 @@ def nlu_parse_endpoint(req: NLURequest):
     """
     try:
         nlu_result = parse_intent_and_slots(req.text, req.image_uri)
-        
         return {
             "intent": nlu_result.intent,
             "confidence": nlu_result.confidence,
@@ -111,7 +110,7 @@ def nlu_parse_endpoint(req: NLURequest):
 def plan_generate_endpoint(req: Dict[str, Any]):
     """
     Generate execution plan from NLU result
-    
+
     Input:
         {
             "intent": str,
@@ -119,7 +118,7 @@ def plan_generate_endpoint(req: Dict[str, Any]):
             "slots": dict,
             "raw_query": str
         }
-    
+
     Returns:
         {
             "tool_chain": list,
@@ -136,9 +135,7 @@ def plan_generate_endpoint(req: Dict[str, Any]):
             slots=req.get("slots", {}),
             raw_query=req.get("raw_query", "")
         )
-        
         execution_plan = planner.plan(nlu_result)
-        
         return execution_plan.to_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Planning failed: {str(e)}")
@@ -149,28 +146,32 @@ def plan_generate_endpoint(req: Dict[str, Any]):
 def execute_run_endpoint(req: Dict[str, Any]):
     """
     Execute a tool chain
-    
+
     Input:
         {
             "tool_chain": list,
-            "slots": dict
-        }
-    
-    Returns:
-        {
             "slots": dict,
-            "evidence": dict,
-            "logs": list,
-            "errors": list,
-            "success": bool
+            "metadata": dict,           # optional; may carry {"status": "UNSUPPORTED", ...}
+            "clarifications": list      # optional; if provided, executor will short-circuit
         }
+
+    Returns:
+        ExecutionState.to_dict()
     """
     try:
         tool_chain = req.get("tool_chain", [])
         slots = req.get("slots", {})
-        
-        execution_state = executor.execute(tool_chain, slots)
-        
+        metadata = req.get("metadata", {}) or {}
+        clarifications = req.get("clarifications", []) or []
+
+        execution_state = executor.execute(
+            tool_chain=tool_chain,
+            slots=slots,
+            status=metadata.get("status", "OK"),
+            message=metadata.get("message"),
+            clarifications=clarifications,
+            metadata=metadata
+        )
         return execution_state.to_dict()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}")
@@ -181,9 +182,7 @@ def execute_run_endpoint(req: Dict[str, Any]):
 def agent_answer_endpoint(req: AgentRequest):
     """
     Complete agent workflow: NLU → Planner → Executor → Composer
-    
-    This is the main endpoint for the frontend to use
-    
+
     Returns:
         {
             "answer_md": str,
@@ -191,11 +190,8 @@ def agent_answer_endpoint(req: AgentRequest):
             "charts": list,
             "citations": list,
             "clarifications": list,
-            "debug": {
-                "nlu": dict,
-                "plan": dict,
-                "execution": dict
-            }
+            "status": str,
+            "debug": {...}
         }
     """
     try:
@@ -203,9 +199,8 @@ def agent_answer_endpoint(req: AgentRequest):
         print("\n" + "="*60)
         print("[Agent] STAGE 1: Natural Language Understanding")
         print("="*60)
-        
+
         if req.skip_nlu and req.nlu_result:
-            # Use provided NLU result
             nlu_result = NLUResult(
                 intent=req.nlu_result.get("intent", ""),
                 confidence=req.nlu_result.get("confidence", 0.0),
@@ -213,64 +208,47 @@ def agent_answer_endpoint(req: AgentRequest):
                 raw_query=req.nlu_result.get("raw_query", req.text)
             )
         else:
-            # Parse user input
             nlu_result = parse_intent_and_slots(req.text, req.image_uri)
-        
+
         print(f"[Agent] Intent: {nlu_result.intent} (confidence: {nlu_result.confidence})")
-        
+
         # ========== STAGE 2: Planning ==========
         print("\n" + "="*60)
         print("[Agent] STAGE 2: Execution Planning")
         print("="*60)
-        
+
         execution_plan = planner.plan(nlu_result)
-        
+
         print(f"[Agent] Tool chain: {len(execution_plan.tool_chain)} steps")
-        print(f"[Agent] Ready to execute: {execution_plan.is_ready()}")
-        
-        # Check for clarifications
-        if not execution_plan.is_ready():
-            print(f"[Agent] Clarifications needed: {execution_plan.clarifications}")
-            return {
-                "status": "need_clarification",
-                "clarifications": execution_plan.clarifications,
-                "answer_md": "I need more information to complete this request:\n\n" + 
-                            "\n".join([f"- {c}" for c in execution_plan.clarifications]),
-                "tables": [],
-                "charts": [],
-                "citations": [],
-                "debug": {
-                    "nlu": {
-                        "intent": nlu_result.intent,
-                        "confidence": nlu_result.confidence,
-                        "slots": nlu_result.slots
-                    },
-                    "plan": execution_plan.to_dict(),
-                    "execution": None
-                }
-            }
-        
+        print(f"[Agent] Plan status: {execution_plan.metadata.get('status', 'OK')}")
+        if execution_plan.clarifications:
+            print(f"[Agent] Clarifications suggested: {execution_plan.clarifications}")
+
         # ========== STAGE 3: Execution ==========
+        # Always call executor; it will short-circuit for UNSUPPORTED / NEEDS_CLARIFICATION.
         print("\n" + "="*60)
         print("[Agent] STAGE 3: Tool Execution")
         print("="*60)
-        
+
         execution_state = executor.execute(
             tool_chain=execution_plan.tool_chain,
-            slots=nlu_result.slots
+            slots=nlu_result.slots,
+            status=execution_plan.metadata.get("status", "OK"),
+            message=execution_plan.metadata.get("message"),
+            clarifications=execution_plan.clarifications,
+            metadata=execution_plan.metadata
         )
-        
+
         print(f"[Agent] Execution complete: {len(execution_state.logs)} tools executed")
         print(f"[Agent] Success: {len(execution_state.errors) == 0}")
-        
         if execution_state.errors:
             print(f"[Agent] Errors: {execution_state.errors}")
-        
+
         # ========== STAGE 4: Response Composition ==========
         print("\n" + "="*60)
         print("[Agent] STAGE 4: Response Composition")
         print("="*60)
-        
+
         # Prepare data for composer
         nlu_dict = {
             "intent": nlu_result.intent,
@@ -278,18 +256,14 @@ def agent_answer_endpoint(req: AgentRequest):
             "slots": nlu_result.slots,
             "raw_query": nlu_result.raw_query
         }
-        
         state_dict = execution_state.to_dict()
-        
-        # Pass plan metadata to composer (includes template info)
-        plan_metadata = execution_plan.metadata
-        
-        # Generate final answer
+        plan_metadata = execution_plan.metadata  # carries template/status
+
         response = compose_answer(nlu_dict, state_dict, plan_metadata)
-        
+
         # Add status and debug info
-        response["status"] = "success"
-        response["clarifications"] = []
+        response["status"] = state_dict.get("status", "OK")
+        response["clarifications"] = state_dict.get("clarifications", [])
         response["debug"] = {
             "nlu": {
                 "intent": nlu_result.intent,
@@ -303,17 +277,15 @@ def agent_answer_endpoint(req: AgentRequest):
                 "errors": execution_state.errors
             }
         }
-        
-        print(f"[Agent] Response generated successfully")
+
+        print(f"[Agent] Response generated (status={response['status']})")
         print("="*60 + "\n")
-        
         return response
-        
+
     except Exception as e:
         print(f"[Agent ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        
         raise HTTPException(
             status_code=500,
             detail={
@@ -331,11 +303,8 @@ def debug_pipeline_endpoint(req: AgentRequest):
     Run full pipeline with detailed debug output at each stage
     """
     try:
-        debug_output = {
-            "stages": {},
-            "errors": []
-        }
-        
+        debug_output = {"stages": {}, "errors": []}
+
         # Stage 1: NLU
         try:
             nlu_result = parse_intent_and_slots(req.text, req.image_uri)
@@ -349,13 +318,10 @@ def debug_pipeline_endpoint(req: AgentRequest):
                 }
             }
         except Exception as e:
-            debug_output["stages"]["nlu"] = {
-                "status": "failed",
-                "error": str(e)
-            }
+            debug_output["stages"]["nlu"] = {"status": "failed", "error": str(e)}
             debug_output["errors"].append(f"NLU: {str(e)}")
             return debug_output
-        
+
         # Stage 2: Planning
         try:
             execution_plan = planner.plan(nlu_result)
@@ -364,45 +330,40 @@ def debug_pipeline_endpoint(req: AgentRequest):
                 "output": execution_plan.to_dict()
             }
         except Exception as e:
-            debug_output["stages"]["planning"] = {
-                "status": "failed",
-                "error": str(e)
-            }
+            debug_output["stages"]["planning"] = {"status": "failed", "error": str(e)}
             debug_output["errors"].append(f"Planning: {str(e)}")
             return debug_output
-        
-        # Check for clarifications
-        if not execution_plan.is_ready():
-            debug_output["stages"]["execution"] = {
-                "status": "blocked",
-                "reason": "clarifications_needed",
-                "clarifications": execution_plan.clarifications
-            }
-            return debug_output
-        
-        # Stage 3: Execution
+
+        # Stage 3: Execution (let executor decide on unsupported/clarifications)
         try:
             execution_state = executor.execute(
                 tool_chain=execution_plan.tool_chain,
-                slots=nlu_result.slots
+                slots=nlu_result.slots,
+                status=execution_plan.metadata.get("status", "OK"),
+                message=execution_plan.metadata.get("message"),
+                clarifications=execution_plan.clarifications,
+                metadata=execution_plan.metadata
             )
             debug_output["stages"]["execution"] = {
                 "status": "success",
                 "output": execution_state.to_dict()
             }
         except Exception as e:
-            debug_output["stages"]["execution"] = {
-                "status": "failed",
-                "error": str(e)
-            }
+            debug_output["stages"]["execution"] = {"status": "failed", "error": str(e)}
             debug_output["errors"].append(f"Execution: {str(e)}")
             return debug_output
-        
+
         # Stage 4: Composition
         try:
             response = compose_answer(
-                {"intent": nlu_result.intent, "slots": nlu_result.slots},
-                execution_state.to_dict()
+                {
+                    "intent": nlu_result.intent,
+                    "confidence": nlu_result.confidence,
+                    "slots": nlu_result.slots,
+                    "raw_query": nlu_result.raw_query
+                },
+                execution_state.to_dict(),
+                execution_plan.metadata
             )
             debug_output["stages"]["composition"] = {
                 "status": "success",
@@ -410,24 +371,18 @@ def debug_pipeline_endpoint(req: AgentRequest):
                     "answer_length": len(response.get("answer_md", "")),
                     "tables_count": len(response.get("tables", [])),
                     "charts_count": len(response.get("charts", [])),
-                    "citations_count": len(response.get("citations", []))
+                    "citations_count": len(response.get("citations", [])),
+                    "status": response.get("status", "OK")
                 }
             }
         except Exception as e:
-            debug_output["stages"]["composition"] = {
-                "status": "failed",
-                "error": str(e)
-            }
+            debug_output["stages"]["composition"] = {"status": "failed", "error": str(e)}
             debug_output["errors"].append(f"Composition: {str(e)}")
-        
+
         return debug_output
-        
+
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-            "stages": debug_output.get("stages", {})
-        }
+        return {"status": "error", "error": str(e), "stages": debug_output.get("stages", {})}
 
 
 # ========== System Info ==========
@@ -435,7 +390,7 @@ def debug_pipeline_endpoint(req: AgentRequest):
 def system_info():
     """Get system information"""
     return {
-        "version": "1.0.0",
+        "version": "1.0.1",
         "architecture": {
             "pattern": "NLU → Planner → Executor → Composer",
             "layers": [
