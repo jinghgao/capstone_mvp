@@ -1,0 +1,57 @@
+# Mowing and Horticulture Maintenance Standards (South Zone)
+
+This document summarizes the visual and operational criteria for mowing, trimming, and horticultural upkeep in the South Zone. It integrates performance metrics from both the Trim and Horticulture standards. All measurements follow local operational guidelines and apply to both the growing and non-growing seasons.
+
+### Trim (Mowing) Maintenance Standards — South Zone
+
+- Trim maintenance standard: Visual criteria
+- Category Visual Criteria
+- Activity Grass length Root depth Bare ground Weed tolerance Turf health Surface consistency Drainage Cutting height
+- Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season
+- Metric Centimetres Centimetres % of ground cover % of ground cover a) green & healthy b) chlorotic c) heat stressed d) dormant Surface consistency Max. hours to 100% field perculation (no standing water) (once rain stops) Centimetres
+- Grade A (Soil) 7 - 8 cm 7 - 8 cm 5 - 10 cm 5 - 10 cm < 1% < 1% < 5% < 5% a) green & healthy a) green & healthy < 10 cm rise/fall over 5 m < 10 cm rise/fall over 5 m 2 hours 2 hours 6.5 cm 6.5 cm
+- Grade A (Sand) 7 - 8 cm 7 - 8 cm 10 - 15 cm 10 - 15 cm < 0.5% < 0.5% < 5% < 5% a) green & healthy a) green & healthy < 10 cm rise/fall over 5 m < 10 cm rise/fall over 5 m 1 hour 1 hour 6.5 cm 6.5 cm
+- Grade B (Regulation, non-irrigated) 7 - 8 cm 7 - 8 cm 5 - 10 cm 5 - 10 cm < 1% < 1% < 10% < 10% a) green & healthy or d) dormant a) green & healthy or d) dormant < 10 cm rise/fall over 5 m < 10 cm rise/fall over 5 m 2 hours 2 hours 6.5 cm 6.5 cm
+- Grade C (non-regulation, non-irrigated) 10 - 12 cm 10 - 12 cm < 2% < 2% < 20% < 20% a) green & healthy or d) dormant a) green & healthy or d) dormant Surface is easy to mow: No tripping hazards Surface is easy to mow: No tripping hazards 6.5 cm 6.5 cm
+- Meadows 15 - 60 cm 15 - 60 cm 10 cm 10 cm
+- Trim maintenance standard: Maintenance frequency
+- Category MOWING INSPECTION REPAIR PAPER PICK IPM SNOW REMOVAL
+- Activity 60-72" ride on mower + line trimming (goal posts) Leaf mulching Vandalism dog hole wear Irrigation Filling holes Wear spots (general field repair) Edging Paper pick IPM Snow removal
+- Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season
+- Metric - - - - - - - - - -
+- Grade A (Soil) Every 10 working days As needed As required (weekly) Inspect and repair weekly Inspect and schedule weekly Inspect and repair weekly Inspect and repair weekly Twice/week (same schedule as wide area mowing and trimming) As required As required As needed
+- Grade A (Sand) Every 10 working days As needed As required (weekly) Inspect and repair weekly Inspect and schedule weekly Inspect and repair weekly Inspect and repair weekly Twice/week (same schedule as wide area mowing and trimming) As required As required As needed
+- Grade B (Regulation, non-irrigated) Every 10 working days As needed As required (weekly) Inspect and repair weekly Inspect and repair weekly Inspect and repair weekly Weekly (same schedule as wide area mowing and trimming) As required As required As needed
+- Grade C (non-regulation, non-irrigated) Every 10 working days As needed Every 3 weeks As required As required As required Once (Sept) Every 10 working days (same schedule as wide area mowing and trimming) As required As required As needed
+- Meadows As required Every 10 working days (same schedule as wide area mowing and trimming) As required As required As needed
+
+### Horticulture Maintenance Standards — South Zone
+
+- Horticulture maintenance standard: Visual criteria
+- Category Visual Criteria
+- Activity Debris tolerance Weed tolerance Weed height Unhealthy/dead plant tolerance Soil aesthetic Edging consistency Pathway encroachment
+- Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season
+- Metric Pieces of non-plant debris/garbage (equal to or larger than cigarette butts or gum wrapper) % coverage per bed/pond Weed height to surrounding plant height # of unhealthy/dead plants % soil area cultivated, hydrated, consistent, smooth, non-compacted (no footprints) % length of crisp, consistent, well-defined edge per bed % pathway width encroachment
+- Annuals < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 100% 100% 100% 100% < 5% encroachment < 5% encroachment
+- Perennials < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 100% of visible soil 100% 80% < 5% encroachment < 5% encroachment
+- Roses < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 100% 100% 100% 100% 0% encroachment
+- Naturalized < 1 piece of debris per 100 SqM < 1 piece of debris per 100 SqM < 5% of invasives < 5% of invasives 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants n/a (only applies to hazardous trees) n/a (only applies to hazardous trees) < 30% encroachment < 30% encroachment
+- Shrub (regular maintenance) < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 100% of visible soil 100% of visible soil 100% 80% < 5% encroachment < 5% encroachment
+- Shrub (ground cover) < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 80% 70% < 5% encroachment < 5% encroachment
+- Pond & water feature < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 25% < 25%
+- Vegetable beds < 0 pieces of debris per SqM < 0 pieces of debris per SqM < 1% < 1% 0 weeds taller than surrounding plants 0 weeds taller than surrounding plants 0 0 100% 100%
+- Horticulture maintenance standard: Maintenance frequency
+- Category ALL CULTURAL PRACTISE IPM (NETTING) PERRENIAL PLANTING REMOVAL
+- Activity Annuals Fertilizing Rose Fertilizing Inspection/ planning Watering - manual Edging Leaf removal Irrigation inspection/ scheduling Training Cultivating Mulching (non-bed prep) Perennial Division Pruning - power (hedge trimming) Pruning - manual Bed renovation Dead heading (roses) Plant protection (perrenials) Heeling (roses) IPM (netting) IPM (other) Staking Perrenial Cleanup Display bed design Annual Bed Changover (fertilizing, weeding, bed prep, annual removal, bulb removal, bed amendment, annual planting, bulb planting) Plant replacement Rose planting Weeding Pond weeding/cleaning Pond Inspection Invasive control Invasive removal Flailing Paper pick (cleaning) Snow removal
+- Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season Growing Season Non-Growing Season
+- Metric - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- Annuals Twice (or as needed) (June, October) Weekly Weekly Twice/week (May-August) (otherwise weekly or as needed) Weekly Bi-weekly Weekly Start up (Apr) Shut down (Oct) Bi-weekly (June, July) Monthly (Aug, Sept) Twice (April, October) As required As required Twice (Sept, May) Twice (June - Oct) Weekly Monthly Twice/week (and as needed) Twice/week (and as needed) As needed
+- Perennials Weekly Weekly weekly (or as needed) Weekly Bi-weekly Weekly Start up (Apr) Shut down (Oct) Weekly (or as needed) Monthly Annually (April) Annually (March) Every 4 years Once (Nov) As required As required Twice As required Bi-weekly Monthly Twice/week Twice/week As needed
+- Roses Twice (Apr - July) Weekly Weekly Bi-weekly (or as needed) Weekly Bi-weekly Weekly Start up (Apr) Shut down (Oct) Once (and as needed) (March) Weekly Monthly Annually (April) Once (March) Once (November) 3 times (June, Aug, Oct, as required) Once (March) Once (Nov) As required Annually (March) Weekly Monthly Twice/week Twice/week As needed
+- Naturalized Monthly Monthly n/a (only for establishment of new plants) As required As required Annually Once Once Annually Bi-weekly Bi-weekly
+- Shrub (regular maintenance) bi-weekly bi-weekly Monthly bi-weekly Monthly Bi-weekly Weekly Start up (Apr) Shut down (Oct) Twice (March, Aug) Twice (May, Aug) Annually (Feb) As required As required As required (avg. 8-10 years) As required As required (annually) Bi-weekly Twice/week Twice/week As needed
+- Shrub (ground cover) Monthly Monthly Monthly 5 times/year (April, May, June, July, Aug) Bi-weekly Weekly Start up (Apr) Shut down (Oct) Once (general) (August) Twice (on pathways, safety/sightline concerns) Annually (August) As required (avg. 8-10 years) As required (annually) Bi-weekly As required As required Twice/week Twice/week As needed
+- Pond & water feature Weekly Weekly Annually (for hard surface ponds only) (Feb) 3 times/year Daily/Weekly (depending on water body) Daily/Weekly (depending on water body)
+- Vegetable beds Weekly Weekly weekly (or as needed) Bi-weekly Weekly Start up (Apr) Shut down (Oct) Bi-weekly (June, July) Monthly (Aug, Sept) Annually (Feb) As required As required Once (April) Bi-weekly Twice/week Twice/week As needed
+
+These standards ensure consistent visual quality, safety, and sustainable field maintenance practices across all managed areas.
