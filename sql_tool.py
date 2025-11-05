@@ -5,10 +5,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable
 import torch
 
-import duckdb, pandas as pd
+import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
-from config import DUCK_FILE, LABOR_XLSX, LABOR_SHEET
+from config import LABOR_XLSX, LABOR_SHEET
 from rag import RAG
+from Data_layer import DataLayer
+import sqlite3
 
 try:
     from transformers import T5ForConditionalGeneration, T5Tokenizer, AutoTokenizer
@@ -19,63 +21,14 @@ except Exception:
 _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 _t5_model: Optional[T5ForConditionalGeneration] = None
 _t5_tokenizer: Optional[T5Tokenizer] = None
-# -----------------------------
-# Config (adjust paths as needed)
-# -----------------------------
-DATA_DIR = os.path.abspath("data")
-DUCK_FILE = os.path.join(DATA_DIR, "mowing.duckdb")
-LABOR_XLSX = os.path.join(DATA_DIR, "6 Mowing Reports to Jun 20 2025.xlsx")
-LABOR_SHEET = 0  # or sheet name string
+DB = DataLayer().initialize_database()
 
-# -----------------------------
-# DuckDB bootstrap
-# -----------------------------
-def _ensure_duck() -> duckdb.DuckDBPyConnection:
-    """Create a DuckDB connection and load the latest Excel into a table."""
-    con = duckdb.connect(DUCK_FILE)
 
-    # Read Excel fresh (simple & explicit for MVP)
-    df = pd.read_excel(LABOR_XLSX, sheet_name=LABOR_SHEET)
-
-    # Load field size data
-    field_size_path = os.path.join(DATA_DIR, "3 vsfs_master_inventory_fieldsizes.xlsx")
-    diamond_field_size_df = pd.read_excel(field_size_path, sheet_name=1)
-    diamond_field_size_df = diamond_field_size_df.fillna("None")
-    rectangular_field_size_df = pd.read_excel(field_size_path, sheet_name=0)
-    rectangular_field_size_df = rectangular_field_size_df.fillna("None")
-    # Normalize column names
-    df.columns = [str(c).strip() for c in df.columns]
-
-    # Parse dates robustly (avoid out-of-bounds errors)
-    if "Posting Date" in df.columns:
-        # try a fast path, then a tolerant path
-        try:
-            df["Posting Date"] = pd.to_datetime(df["Posting Date"], format="%m/%d/%y", errors="coerce")
-        except Exception:
-            pass
-        df["Posting Date"] = pd.to_datetime(df["Posting Date"], errors="coerce")
-        df = df.dropna(subset=["Posting Date"])
-
-    # Ensure numeric cost
-    if "Val.in rep.cur." in df.columns:
-        df["Val.in rep.cur."] = pd.to_numeric(df["Val.in rep.cur."], errors="coerce").fillna(0.0)
-
-    # Re-create table
-    con.execute("DROP TABLE IF EXISTS labor_data")
-    con.execute("DROP TABLE IF EXISTS diamond_field_size_data")
-    con.execute("DROP TABLE IF EXISTS rectangular_field_size_data")
-    con.register("labor_df", df)
-    con.register("diamond_field_size_data", diamond_field_size_df)
-    con.register("rectangular_field_size_data", rectangular_field_size_df)
-    con.execute("CREATE TABLE labor_data AS SELECT * FROM labor_df")
-    con.execute("CREATE TABLE diamond_field_size_data AS SELECT * FROM diamond_field_size_data")
-    con.execute("CREATE TABLE rectangular_field_size_data AS SELECT * FROM rectangular_field_size_data")
-    return con
 
 # -----------------------------
 # Template implementations
 # -----------------------------
-def _tpl_mowing_labor_cost_month_top1(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_mowing_labor_cost_month_top1(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns the park with the highest total mowing labor cost in the given month/year.
     Expects params: { "month": int (1-12), "year": int }
@@ -91,27 +44,29 @@ def _tpl_mowing_labor_cost_month_top1(con: duckdb.DuckDBPyConnection, params: Di
 
     sql = f"""
     WITH month_data AS (
-      SELECT
-        "CO Object Name" AS park,
-        CAST("Val.in rep.cur." AS DOUBLE) AS cost,
-        "Posting Date"::TIMESTAMP AS posting_dt
-      FROM labor_data
+        SELECT
+            "CO Object Name" AS park,
+            CAST("Val.in rep.cur." AS REAL) AS cost,
+            "Posting Date" AS posting_dt
+        FROM labor_data
     )
     SELECT park, SUM(cost) AS total_cost
     FROM month_data
-    WHERE year(posting_dt) = {year}
-      AND month(posting_dt) = {month}
+    WHERE strftime('%Y', posting_dt) = '{year}'
+        AND strftime('%m', posting_dt) = '{month:02d}'
     GROUP BY park
     ORDER BY total_cost DESC
     LIMIT 1;
     """
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
 
-def _tpl_mowing_last_date_by_park(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_mowing_last_date_by_park(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns the most recent mowing date for a specific park or all parks.
     Expects params: { "park_name": str (optional) }
@@ -129,7 +84,7 @@ def _tpl_mowing_last_date_by_park(con: duckdb.DuckDBPyConnection, params: Dict[s
             "CO Object Name" AS park,
             MAX("Posting Date") AS last_mowing_date,
             COUNT(*) AS total_mowing_sessions,
-            SUM(CAST("Val.in rep.cur." AS DOUBLE)) AS total_cost
+            SUM(CAST("Val.in rep.cur." AS REAL)) AS total_cost
         FROM labor_data
         WHERE LOWER("CO Object Name") LIKE LOWER('%{park_name}%')
         GROUP BY "CO Object Name"
@@ -143,19 +98,22 @@ def _tpl_mowing_last_date_by_park(con: duckdb.DuckDBPyConnection, params: Dict[s
             "CO Object Name" AS park,
             MAX("Posting Date") AS last_mowing_date,
             COUNT(*) AS total_sessions,
-            SUM(CAST("Val.in rep.cur." AS DOUBLE)) AS total_cost
+            SUM(CAST("Val.in rep.cur." AS REAL)) AS total_cost
         FROM labor_data
         GROUP BY "CO Object Name"
         ORDER BY last_mowing_date DESC;
         """
     
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
+    print(f"Elapsed time: {elapsed} ms")
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
 
-def _tpl_mowing_cost_trend(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_mowing_cost_trend(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns monthly mowing cost trend for a date range.
     Expects params: { 
@@ -190,16 +148,16 @@ def _tpl_mowing_cost_trend(con: duckdb.DuckDBPyConnection, params: Dict[str, Any
     sql = f"""
     WITH monthly_costs AS (
         SELECT 
-            year("Posting Date") AS year,
-            month("Posting Date") AS month,
+            strftime('%Y', "Posting Date") AS year,
+            strftime('%m', "Posting Date") AS month,
             "CO Object Name" AS park,
-            SUM(CAST("Val.in rep.cur." AS DOUBLE)) AS monthly_cost,
+            SUM(CAST("Val.in rep.cur." AS REAL)) AS monthly_cost,
             COUNT(*) AS session_count
         FROM labor_data
-        WHERE year("Posting Date") = {year}
-          AND month("Posting Date") BETWEEN {start_month} AND {end_month}
+        WHERE strftime('%Y', "Posting Date") = '{year}'
+          AND CAST(strftime('%m', "Posting Date") AS INTEGER) BETWEEN {start_month} AND {end_month}
           {park_filter}
-        GROUP BY year("Posting Date"), month("Posting Date"), "CO Object Name"
+        GROUP BY strftime('%Y', "Posting Date"), strftime('%m', "Posting Date"), "CO Object Name"
     )
     SELECT 
         year,
@@ -212,12 +170,14 @@ def _tpl_mowing_cost_trend(con: duckdb.DuckDBPyConnection, params: Dict[str, Any
     """
     
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed, "chart_type": "line"}
 
 
-def _tpl_mowing_cost_by_park_month(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_mowing_cost_by_park_month(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns cost comparison across all parks for a specific month.
     Expects params: { "month": int (1-12), "year": int }
@@ -237,25 +197,27 @@ def _tpl_mowing_cost_by_park_month(con: duckdb.DuckDBPyConnection, params: Dict[
     
     sql = f"""
     SELECT 
-        "CO Object Name" AS park,
-        SUM(CAST("Val.in rep.cur." AS DOUBLE)) AS total_cost,
-        COUNT(*) AS mowing_sessions,
-        AVG(CAST("Val.in rep.cur." AS DOUBLE)) AS avg_cost_per_session,
-        SUM("Total quantity") AS total_quantity
+            "CO Object Name" AS park,
+            SUM(CAST("Val.in rep.cur." AS REAL)) AS total_cost,
+            COUNT(*) AS mowing_sessions,
+            AVG(CAST("Val.in rep.cur." AS REAL)) AS avg_cost_per_session,
+            SUM("Total quantity") AS total_quantity
     FROM labor_data
-    WHERE year("Posting Date") = {year}
-      AND month("Posting Date") = {month}
+    WHERE strftime('%Y', "Posting Date") = '{year}'
+        AND strftime('%m', "Posting Date") = '{month:02d}'
     GROUP BY "CO Object Name"
     ORDER BY total_cost DESC;
     """
-    
+
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed, "chart_type": "bar"}
 
 
-def _tpl_mowing_cost_breakdown_by_park(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_mowing_cost_breakdown_by_park(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns detailed monthly cost breakdown for a specific park or all parks.
     Expects params: { 
@@ -277,36 +239,38 @@ def _tpl_mowing_cost_breakdown_by_park(con: duckdb.DuckDBPyConnection, params: D
         year = datetime.utcnow().year
     
     # Build WHERE clause
-    where_parts = [f"year(\"Posting Date\") = {year}"]
+    where_parts = [f"strftime('%Y', \"Posting Date\") = '{year}'"]
     
     if park_name:
         where_parts.append(f"LOWER(\"CO Object Name\") LIKE LOWER('%{park_name}%')")
     
     if isinstance(month, int) and 1 <= month <= 12:
-        where_parts.append(f"month(\"Posting Date\") = {month}")
+        where_parts.append(f"strftime('%m', \"Posting Date\") = '{month:02d}'")
     
     where_clause = " AND ".join(where_parts)
     
     sql = f"""
     SELECT 
         "CO Object Name" AS park,
-        month("Posting Date") AS month,
+        strftime('%m', "Posting Date") AS month,
         "ParActivity" AS activity_type,
-        SUM(CAST("Val.in rep.cur." AS DOUBLE)) AS cost,
+        SUM(CAST("Val.in rep.cur." AS REAL)) AS cost,
         COUNT(*) AS sessions,
         SUM("Total quantity") AS total_quantity
     FROM labor_data
     WHERE {where_clause}
-    GROUP BY "CO Object Name", month("Posting Date"), "ParActivity"
+    GROUP BY "CO Object Name", strftime('%m', "Posting Date"), "ParActivity"
     ORDER BY park, month, cost DESC;
     """
     
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
-def _tpl_get_diamond_dimensions(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_get_diamond_dimensions(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns diamond field dimensions from the diamond_field_size_data table.
     """
@@ -316,11 +280,13 @@ def _tpl_get_diamond_dimensions(con: duckdb.DuckDBPyConnection, params: Dict[str
     LIMIT 10;
     """
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
-def _tpl_get_rectangular_dimensions(con: duckdb.DuckDBPyConnection, params: Dict[str, Any]) -> Dict[str, Any]:
+def _tpl_get_rectangular_dimensions(con: sqlite3.Connection, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Returns rectangular field dimensions from the rectangular_field_size_data table.
     """
@@ -330,14 +296,16 @@ def _tpl_get_rectangular_dimensions(con: duckdb.DuckDBPyConnection, params: Dict
     LIMIT 10;
     """
     t0 = time.time()
-    rows = con.execute(sql).fetchdf().to_dict(orient="records")
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description] if cur.description else []
+    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
 # -----------------------------
 # Dispatcher registry
 # -----------------------------
-TEMPLATE_REGISTRY: Dict[str, Callable[[duckdb.DuckDBPyConnection, Dict[str, Any]], Dict[str, Any]]] = {
+TEMPLATE_REGISTRY: Dict[str, Callable[[sqlite3.Connection, Dict[str, Any]], Dict[str, Any]]] = {
     # Original template
     "mowing.labor_cost_month_top1": _tpl_mowing_labor_cost_month_top1,
     
@@ -373,7 +341,7 @@ def run_sql_template(template: str, params: Dict[str, Any]) -> Dict[str, Any]:
             "elapsed_ms": 0,
         }
 
-    con = _ensure_duck()
+    con = sqlite3.connect(DB.db_path)
     try:
         func = TEMPLATE_REGISTRY[template]
         out = func(con, params or {})

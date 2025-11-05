@@ -7,31 +7,15 @@ from sqlalchemy import create_engine
 from langchain_huggingface import HuggingFacePipeline
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from typing import Dict, Any
-
+from Data_layer import DataLayer
 def sql_fall_back(query: str) -> Dict[str, Any]:
     """Function to execute SQL query with fall back to a different LLM if needed."""
-    # File paths
-    DATA_DIR = os.path.abspath("data")
-    PERMIT_XLSX = os.path.join(DATA_DIR, "4 Permits_2024.xlsx")
-    STOCK_XLSX = os.path.join(DATA_DIR, "stock_prices.xlsx")
-    # switch to a file-backed SQLite DB
-    DATABASE_PATH = os.path.join(DATA_DIR, "permits_data.sqlite3")
-    PERMIT_SHEET = 0
-    STOCK_SHEET = 0
 
-    # Read Excel and normalize column names
-    df = pd.read_excel(PERMIT_XLSX, sheet_name=PERMIT_SHEET)
-    df.columns = [col.lower().replace(" ", "_") for col in df.columns]
-    df_stock = pd.read_excel(STOCK_XLSX, sheet_name=STOCK_SHEET)
-    df_stock.columns = [col.lower().replace(" ", "_") for col in df_stock.columns]
-
-    if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'], format='%b %d, %Y', errors='coerce')
-        print(df['date'].head())
-    # Use SQLAlchemy + SQLite: create/replace table on disk
+    db = DataLayer().initialize_database()
+    # print(db.show_tables_schemas())
+    DATABASE_PATH = db.db_path
     engine = create_engine(f"sqlite:///{DATABASE_PATH}", echo=False)
-    df.to_sql("event_data", con=engine, if_exists="replace", index=False)
-    df_stock.to_sql("stock_data", con=engine, if_exists="replace", index=False)
+
     engine.dispose()
 
     # llm (unchanged)
