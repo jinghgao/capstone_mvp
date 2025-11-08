@@ -8,8 +8,9 @@ FAISS_DIR   = os.path.join(DATA_DIR, "faiss_index")
 os.makedirs(RAG_DOC_DIR, exist_ok=True)
 os.makedirs(FAISS_DIR,   exist_ok=True)
 
-# ---- DuckDB demo input ----
-DUCK_FILE    = os.path.join(DATA_DIR, "mowing.duckdb")
+# ---- Data input ----
+# NOTE: project uses a file-backed SQLite DB via Data_layer.py. Keep source
+# Excel paths here for data ingestion into SQLite.
 LABOR_XLSX   = os.path.join(DATA_DIR, "6 Mowing Reports to Jun 20 2025.xlsx")
 LABOR_SHEET  = 0  # or a sheet name like "Sheet1"
 

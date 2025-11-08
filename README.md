@@ -13,7 +13,7 @@ A production-ready intelligent system for Vancouver parks maintenance operations
 - 📊 **Interactive Visualizations**: Auto-generated charts (line, bar, timeline)
 - 🎯 **Semantic Intent Classification**: SentenceTransformer-based few-shot learning
 - 🔍 **Multi-Modal Queries**: Text + SQL + Document Retrieval + Image Analysis
-- ⚡ **High Performance**: DuckDB for SQL, FAISS for semantic search
+- ⚡ **High Performance**: SQLite for SQL, FAISS for semantic search
 - 🏃 **Multi-Domain Support**: Mowing operations + Field standards
 
 ---
@@ -60,7 +60,7 @@ User Query + Optional Image
 │                                                           │
 │  ┌──────────┐  ┌──────────┐  ┌────────────────┐        │
 │  │   RAG    │  │   SQL    │  │  VLM (Cloud)   │        │
-│  │ FAISS/   │  │ DuckDB   │  │  Claude 3      │        │
+│  │ FAISS/   │  │ SQLite   │  │  Claude 3      │        │
 │  │  BM25    │  │    +5    │  │  Haiku         │        │
 │  │          │  │Templates │  │ (OpenRouter)   │        │
 │  └──────────┘  └──────────┘  └────────────────┘        │
@@ -108,7 +108,7 @@ capstone_mvp/
 │   │
 │   ├── Tools/
 │   │   ├── rag.py              # FAISS/BM25 retrieval (PDF + TXT support)
-│   │   ├── sql_tool.py         # DuckDB templates (5 analytics queries)
+│   │   ├── sql_tool.py         # SQLite templates (5 analytics queries)
 │   │   └── cv_tool.py          # OpenRouter VLM (Claude 3 Haiku)
 │   │                           # ⚠️ Requires OPENROUTER_API_KEY
 │   │
@@ -622,7 +622,7 @@ python-dotenv>=1.0.0    # Environment variables
 ### Data & Analytics
 ```
 pandas==2.2.0           # Data processing
-duckdb>=0.10.0          # In-process SQL
+# SQLite (built-in) used via file-backed DataLayer
 openpyxl>=3.1.0         # Excel support
 ```
 
@@ -656,7 +656,7 @@ openai>=1.12.0          # Client for Ollama + OpenRouter
 |-----------|-------------------|-------|
 | NLU Classification | ~50ms | SentenceTransformer |
 | Planning | ~5ms | Template routing |
-| SQL Query | 5-20ms | DuckDB in-memory |
+| SQL Query | 5-20ms | SQLite file-backed |
 | RAG Retrieval | 10-30ms | FAISS vector search |
 | Ollama Summary | 500ms-2s | Local LLM |
 | VLM Analysis | 1-3s | Claude Haiku API |
@@ -808,7 +808,7 @@ rm -rf data/faiss_index/*
 
 ## 🔒 Security & Privacy
 
-- ✅ All SQL processing is local (DuckDB)
+- ✅ All SQL processing is local (SQLite via DataLayer)
 - ✅ Text summarization is local (Ollama)
 - ✅ API keys in `.env` (not in git)
 - ⚠️ Image analysis uses cloud API (OpenRouter)
