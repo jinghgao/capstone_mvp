@@ -29,6 +29,8 @@ export default function App() {
         "Show mowing cost trend from January to June 2025",
         "Compare mowing costs across all parks in March 2025",
         "When was the last mowing at Cambridge Park?",
+        "Which parks have the least mowing cost from June 2024 to May 2025?",
+        "What is the cost of the activity in Stanley from February 2025 to March 2025?"
       ],
     },
     {
