@@ -12,6 +12,7 @@ pydantic>=2.7
 openpyxl>=3.1.0
 sqlalchemy>=2.0.0
 sqlalchemy>=2.0.0
+rapidfuzz>=2.16.1
 
 # LangChain & RAG
 langchain>=0.1.0

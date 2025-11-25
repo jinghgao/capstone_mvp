@@ -3,7 +3,7 @@
 from __future__ import annotations
 import re
 from typing import Dict, Any, List, Optional
-
+from rapidfuzz import process
 from nlu import NLUResult
 
 
@@ -77,13 +77,13 @@ class ExecutionPlanner:
                 "optional": []
             },
             "field_dimension.rectangular": {
-                "builder": self._build_top_cost_params,  # Placeholder
-                "required": ["sport", "age_group"],
+                "builder": self._build_field_dimension_params_rectangular,  # Placeholder
+                "required": ["field_name"],
                 "optional": []
             },
             "field_dimension.diamond": {
-                "builder": self._build_top_cost_params,  # Placeholder
-                "required": ["sport", "age_group"],
+                "builder": self._build_field_dimension_params_diamond,  # Placeholder
+                "required": ["field_name"],
                 "optional": []
             },
             "activity.cost_by_location_range": {
@@ -332,12 +332,16 @@ class ExecutionPlanner:
             )
         
         
-        # param_builder = template_config["builder"]
-        # params = param_builder(slots)
-        
+        param_builder = template_config["builder"]
+        params = param_builder(nlu_result.raw_query)
+        slots["field_type"] = "diamond" if template == "field_dimension.diamond" else "rectangular"
         # Validate parameters
-        # clarifications = self._validate_params(template, params, template_config)
-        
+        clarifications = self._validate_params(template, params, template_config)
+        if clarifications:
+            return ExecutionPlan(
+                tool_chain=[],
+                clarifications=clarifications
+            )
         tool_chain = [
             {
                 "tool": "kb_retrieve",
@@ -349,7 +353,8 @@ class ExecutionPlanner:
             {
                 "tool": "sql_query_rag",
                 "args": {
-                    "template": template,   
+                    "template": template, 
+                    "params": params
                 }
             }
         ]
@@ -359,7 +364,7 @@ class ExecutionPlanner:
         return ExecutionPlan(
             tool_chain=tool_chain,
             clarifications="",
-            metadata={"workflow": "RAG+SQL", "template": template}
+            metadata={"workflow": "RAG+SQL", "template": template, "status": "OK"}
         )
     # ========== CV WORKFLOW ==========
     def _plan_cv(self, nlu_result: NLUResult) -> ExecutionPlan:
@@ -531,6 +536,20 @@ class ExecutionPlanner:
             "weeks_ahead": slots.get("weeks_ahead"),
             "park_name": slots.get("park_name")
         }
+    def _build_field_dimension_params_diamond(self, query: str) -> Dict[str, Any]:
+        # Implementation for building parameters for diamond field dimension queries
+        t = query
+        diamond_fields = ['Balaclava Diamond SE', 'Balaclava Diamond SW', 'Beaconsfield Diamond SW', 'Bobolink Diamond EC', 'Bobolink Diamond NE', 'Bobolink Diamond NW', 'Bobolink Diamond SW', 'Braemar Diamond SE', 'Stanley Park Brockton Diamond SW', 'Carnarvon Diamond EC', 'Carnarvon Diamond NE', 'Carnarvon Diamond NW', 'Carnarvon Diamond SW', 'Chaldecott Diamond C', 'Chaldecott Diamond NW', 'Champlain Diamond NE', 'Champlain Diamond SW', 'China Creek Diamond NE', 'China Creek Diamond NW', 'Clark Diamond S', 'Clinton Diamond NW', 'Collingwood Diamond NW', 'Columbia Diamond NE', 'Columbia Diamond SE', 'Columbia Diamond WC', 'Connaught Diamond NE', 'Connaught Diamond NW', 'Connaught Diamond SE', 'Connaught Diamond SC', 'Douglas Field W Diamond NW', 'Douglas Field E Diamond SC', 'Douglas Field E Diamond SE', 'Douglas Field W Diamond SW', 'Earles Diamond SW', 'Elm Diamond NW', 'Falaise Diamond NE', 'Falaise Diamond S', 'Gaston Diamond NW', 'Gordon Diamond SE Centre', 'Gordon Diamond NE', 'Gordon Diamond SE', 'Gordon Diamond SW', 'Gordon Diamond NW Centre', 'Hastings Diamond SE', 'Hastings Diamond SW', 'Hillcrest Diamond NE', 'Hillcrest Diamond NW', 'Hillcrest Diamond SE - Challenger', 'Hillcrest Diamond SW', 'Jericho Diamond N', 'John Hendry Diamond EC', 'John Hendry Diamond EN', 'John Hendry Diamond NW', 'John Hendry Diamond ES', 'John Hendry Diamond SW', 'John Hendry Field Gravel Diamond', 'Jonathan Rogers Diamond NW', 'Kensington Diamond NSE', 'Kensington Diamond NNW', 'Kensington Diamond SSE', 'Kensington Diamond SNW', 'Kerrisdale Diamond NW', 'Kerrisdale Diamond SE', 'Killarney Diamond NW', 'Killarney Diamond C', 'Killarney Diamond EC', 'Killarney Diamond NE', 'Locarno Beach Diamond ', 'Maple Grove Diamond NE', 'Maple Grove Diamond SW', 'Mcbride Diamond SE', 'Mcbride Diamond SW', 'Memorial South Diamond C', 'Memorial South Diamond SC', 'Memorial South Diamond NE', 'Memorial South Diamond NW', 'Memorial South Diamond SE', 'Memorial South Diamond SE', 'Memorial West Diamond C', 'Memorial West Diamond E', 'Memorial West Diamond W', 'Moberly Diamond SE', 'Moberly Diamond SW', 'Montgomery Diamond NW', 'Montgomery Diamond NE', 'Montgomery Diamond SE', 'Montgomery Diamond SW', 'Nanaimo Diamond NC', 'Nanaimo Diamond NE', 'Nanaimo Diamond SE', 'Nanaimo Diamond SW', 'Norquay Diamond NE', 'Norquay Diamond SW', 'Oak Diamond N', 'Oak Diamond NE', 'Oak Diamond S', 'Oak Diamond SE', 'Quilchena Diamond C', 'Quilchena Diamond SE', 'Riley Diamond SW', 'Ross Diamond NE', 'Rupert Diamond C', 'Shann Diamond SE', 'Strathcona Diamond C', 'Strathcona Diamond NW', 'Strathcona Diamond SW', 'Sunrise Diamond SE', 'Templeton Diamond SE', 'Tisdall Diamond NE', 'Tisdall Diamond SW', 'Trafalgar Diamond SE', 'Trafalgar Diamond SW', 'Trafalgar Diamond W', 'West Point Grey Diamond NE', 'West Point Grey Diamond SE', 'West Point Grey Diamond SW', 'Woodland Diamond NW', 'None']
+        match = process.extractOne(t, diamond_fields, score_cutoff=70)
+        return {"field_name": match[0] if match else None }
+    def _build_field_dimension_params_rectangular(self, query: str) -> Dict[str, Any]:
+        # Implementation for building parameters for diamond field dimension queries
+        
+        t = query
+        rectangle_fields = ['Adanac Field NW', 'Adanac Field SE', 'Adanac Field Summer', 'Adanac Field SW', 'Andy Livingstone  Artificial Field E', 'Andy Livingstone  Artificial Field W', 'Balaclava Field Oval', 'Balaclava Field SW', 'Beaconsfield Field Gravel', 'Beaconsfield Field SE', 'Beaconsfield Field SW', 'Bobolink Field NW', 'Bobolink Field SE', 'Bobolink Field SW', 'Braemar Field C', 'Brewers Field C', 'Carnarvon Field E Summer', 'Carnarvon Field N', 'Carnarvon Field S', 'Carnarvon Field WC Summer', 'Cartier Grass Area', 'Chaldecott Field NW', 'Chaldecott Field SW', 'Champlain Field C', 'Charleson Field C', 'China Creek rth Field C', 'Clark Field C', 'Clinton Field Gravel', 'Clinton Field NW', 'Clinton Field SW', 'Collingwood Field C', 'Columbia Field C', 'Columbia Field S', 'Connaught Cricket Pitch E', 'Connaught Field C', 'Connaught Field E', 'Connaught Field NW', 'Connaught Field W', 'David Lam Field C', 'Douglas Field E', 'Douglas Field E - Cricket Pitch', 'Douglas Field E North', 'Douglas Field W', 'Earles Field C', 'Elm Field C', 'Empire Artificial Field N', 'Empire Artificial Field S', 'Eric Hamber High School Synthetic Turf', 'Falaise Field N', 'Garden Field C', 'Gaston Field S', 'General Brock Field N', 'George Field C', 'Gordon Field NE', 'Gordon Field NW', 'Gordon Field SE', 'Granville Field C', 'Hillcrest Field E', 'Hillcrest Field Mini NW', 'Hillcrest Field N', 'Hillcrest Field S', 'Jericho Field E', 'Jericho Grass - E Festival Area', 'Jericho West Artificial Field', 'John Hendry Field Gravel', 'John Hendry Field NE', 'John Hendry Field NW', 'Jonathan Rogers Field C', 'Jones Field C', 'Kensington Field N', 'Kensington Field S', 'Kerrisdale ES Field Gravel N', 'Kerrisdale ES Field Gravel S', 'Kerrisdale Field C', 'Killarney Field C', 'Killarney Field EC', 'Killarney Field Gravel', 'Killarney Field Oval', 'Killarney Field SE ', 'Kingcrest Field C', 'Locar Beach Field Gravel', 'Locarno Beach Field C', 'Maclean Field C', 'McBride Field C', 'McSpadden Field C', 'Memorial South Artifical Field', 'Memorial South Field NE', 'Memorial South Field NW', 'Memorial South Field Oval', 'Memorial South Field SE', 'Memorial West Field C', 'Memorial West Field SE', 'Moberly Field N', 'Moberly Field S', 'Montgomery Field E', 'Montgomery Field W', 'Musqueam Field E', 'Musqueam Field NW', 'Musqueam Field W', 'Nanaimo Field E', 'Nanaimo Field W', 'New Brighton Field N', 'Norquay Field S', 'Oak Field E', 'Oak Field Gravel', 'Oak Field W', 'Oak Meadows Field C', 'Point Grey HS Artificial Field', 'Prince Edward Field C', 'Prince of Wales Field C', 'Queen Elizabeth ES Field Gravel', 'Quilchena Field NW', 'Quilchena Field SE', 'Renfrew Field C', 'Riley Field C', 'Robson Field C', 'Ross Field C', 'Rupert Field C', 'Rupert Field S', 'Shannon Field C', 'Slocan Field C', 'Slocan Field SW', 'Stanley Park Brockton Cricket Field N', 'Stanley Park Brockton Cricket Field S', 'Stanley Park Brockton Field Oval', 'Stanley Park Brockton Field SW', 'Strathcona Field EC', 'Strathcona Field Gravel', 'Strathcona Field Oval', 'Strathcona Field W', 'Sunrise Field C', 'Sunset/Henderson Field C', 'Templeton Field N', 'Templeton Field S', 'Tisdall Field N', 'Tisdall Field S', 'Trafalgar Cricket Pitch C', 'Trafalgar Field C', 'Trafalgar Field E', 'Trafalgar Field NW', 'Trafalgar Field SC', 'Trillium Artificial Field E', 'Trillium Artificial Field W', 'Van Tech HS Artificial Field', 'West Point Grey Field N', 'West Point Grey Field S', 'Wina Field C', 'Wina Field N', 'Wina Field S', 'Woodland Field N', 'Woodland Field S', 'None']
+        match = process.extractOne(t, rectangle_fields, score_cutoff=40)
+        print(f"[Planner] Field dimension match: {match}")
+        return {"field_name": match[0] if match else None }
     # ========== PARAMETER VALIDATION ==========
     def _validate_params(self, template: str, params: Dict[str, Any], config: Dict[str, Any]) -> List[str]:
         """
@@ -558,6 +577,8 @@ class ExecutionPlanner:
             clarifications.append("Please provide the park name for which you want to know the last activity date.")
         elif template == "activity.maintenance_due_window":
             clarifications.append("Please specify the maintenance activity (e.g., mowing) and the horizon in weeks.")
+        elif template in ["field_dimension.rectangular", "field_dimension.diamond"]:
+            clarifications.append("Please specify the field name or sport for which you want the dimensions.")
         return clarifications
     
     def _build_rag_keywords(self, slots: Dict[str, Any]) -> str:

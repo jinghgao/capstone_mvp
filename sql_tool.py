@@ -274,15 +274,17 @@ def _tpl_get_diamond_dimensions(con: sqlite3.Connection, params: Dict[str, Any])
     """
     Returns diamond field dimensions from the diamond_field_size_data table.
     """
-    sql = """
-    SELECT "Name of Field ", "Diamonds: Dimension Home to Pitchers Plate - m ", "Diamonds: Home to First Base Path - m "
-    FROM diamond_field_size_data
+    field_name = params.get("field_name")
+    sql = f"""
+    SELECT "Name of Field", "Diamonds: Dimension Home to Pitchers Plate - m", "Diamonds: Home to First Base Path - m"
+    FROM diamond_field_size_data WHERE "Name of Field" LIKE '%{field_name}%'
     LIMIT 10;
     """
     t0 = time.time()
     cur = con.execute(sql)
     cols = [d[0] for d in cur.description] if cur.description else []
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    print(rows)
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
@@ -290,9 +292,10 @@ def _tpl_get_rectangular_dimensions(con: sqlite3.Connection, params: Dict[str, A
     """
     Returns rectangular field dimensions from the rectangular_field_size_data table.
     """
-    sql = """
-    SELECT "Name of Field ", "Rectangular Field Dimension: Length - m ", "Rectangular Field Dimension: Width - m "
-    FROM rectangular_field_size_data
+    field_name = params.get("field_name")
+    sql = f"""
+    SELECT "Name of Field", "Rectangular Field Dimension: Length - m", "Rectangular Field Dimension: Width - m"
+    FROM rectangular_field_size_data WHERE "Name of Field" LIKE '%{field_name}%'
     LIMIT 10;
     """
     t0 = time.time()

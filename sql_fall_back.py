@@ -26,7 +26,9 @@ def sql_fall_back(query: str) -> Dict[str, Any]:
     table_schema = db.get_table_info(table_names=["event_data"])  # or build a string manually
     result = db.run("SELECT COUNT(*) FROM event_data WHERE date LIKE '2024-06-%';")
     # print("Events in June:", result)
-    prompt = f"Schema: {table_schema}\nQuestion: How many events occurred in June? SQL queries return results as lists of tuples. For example, [(5860,)] means the result is 5860."
+    prompt = f"Schema: {table_schema}\nQuestion: How many events occurred in June? "
+    prefix = "Note: SQL queries return results as lists of tuples. For example, [(5860,)] means the result is 5860. [('4594 Balaclava St',)] means the result is '4594 Balaclava St'.\n"
+
 
     # Create an agent that can generate SQL and run it against the database
     agent_executor = create_sql_agent(
@@ -35,11 +37,19 @@ def sql_fall_back(query: str) -> Dict[str, Any]:
         verbose=True,
         handle_parsing_errors=True,
         agent_type="zero-shot-react-description",
-        return_intermediate_steps=True
+        return_intermediate_steps=True,
+        kwargs={"prefix": prefix}
     )
 
 
     # Use the agent
-    resp = agent_executor.invoke(query)
-    #response = agent_executor.invoke("How many events occurred in May from the event data?")
-    return {"answer_md": str(resp)}
+    try:
+        resp = agent_executor.invoke(query)
+        #response = agent_executor.invoke("How many events occurred in May from the event data?")
+        return {"answer_md": str(resp)}
+    except Exception as e:
+        return {
+            "answer_md": "agent_parsing_error",
+            "error": "agent_parsing_error",
+            "exception": str(e),
+        }

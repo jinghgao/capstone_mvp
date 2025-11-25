@@ -46,8 +46,9 @@ INTENT_PROTOTYPES = {
         "Discuss reasons for above-average mowing cost in June using mowing procedures.",
         "Interpret median mowing cost per park in Q3 2024 with reference to mowing standards.",
         "Explain July YOY change in mowing costs using recommended mowing intervals.",
-        "Calculate the differences in dimensions of a [shape] field for [sport]",
-        "What are the differences for the diamond fields for Softball Female - U17",
+        "Compare Balaclava Diamond SE field dimensions to standard softball female U17 field requirements",
+        "Compare Adanac Field NW field dimensions to standard soccer U8 field requirements",
+        "What are the dimension difference between Balaclava Field Oval and standard U12 soccer field?",
         "Which parks need mowing in 2 weeks?",
         "Which parks need irrigation checks in 4 weeks?"
     ],
@@ -449,7 +450,7 @@ def _detect_domain(text: str) -> str:
         "cutting height", "grass length"
     ]):
         return "mowing"
-    if (any(k in t for k in ["dimension", "dimensions", "size", "length", "width"])
+    if (any(k in t for k in ["dimension", "dimensions", "size", "length", "width", "compare", "difference", "differences"])
             and any(k in t for k in ["field", "pitch", "court"])):
         return "field_dimension"
     if any(k in t for k in ["soccer", "football", "rugby",
