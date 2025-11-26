@@ -223,17 +223,7 @@ def _summarize_rag_context_dimension_comparison(
     sql: str = "",
     field_type: str = ""
 ) -> Dict[str, Any]:
-    """
-    使用 LLM 将 RAG 文档片段总结成连贯的上下文
-    
-    Args:
-        rag_snippets: RAG 检索到的文档片段
-        query: 用户原始查询
-        sql_result_summary: SQL 查询结果的摘要（如果有）
-    
-    Returns:
-        格式化的上下文说明
-    """
+
     # Default structured output matching prepare_data.generate_query's answer_ground_truth shape
     # print("HELLO WORLD")
     
@@ -301,9 +291,6 @@ def _summarize_rag_context_dimension_comparison(
                 "5) Use null for differences when the measured value is within range or missing.\n"
                 "6) Numeric values should be plain numbers (floats allowed). Booleans must be true/false.\n"
             )
-        # print(f"[DEBUG] Dimension comparison prompt:\n{prompt}\n")
-        # print("LLM_AVAILABLE:", LLM_AVAILABLE)
-        # 调用 LLM (use reasonable max_tokens)
         if LLM_AVAILABLE:
             client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
             model = OLLAMA_MODEL_FALL_BACK
@@ -340,12 +327,10 @@ def _summarize_rag_context_dimension_comparison(
         summary = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         """
         summary = response.choices[0].message.content.strip()
-        # print(f"[DEBUG] Dimension comparison summary:\n{summary}\n")
 
         # Try strict JSON parse first
         try:
             parsed = json.loads(summary)
-            # print(f"[DEBUG] Parsed JSON:\n{parsed}\n")
         except Exception:
             # Fallback: extract the first balanced JSON object substring
             parsed = None
@@ -365,8 +350,6 @@ def _summarize_rag_context_dimension_comparison(
                             except Exception:
                                 parsed = None
                             break
-            # print(f"[DEBUG] Parsed JSON2:\n{parsed}\n")
-        # If parsing failed, fallback to heuristics using the summary text
         return parsed or default_out
 
     except Exception as e:
@@ -604,27 +587,7 @@ def compose_answer(
             f"\n\n**Query Performance**: "
             f"{sql.get('rowcount', 0)} rows in {sql.get('elapsed_ms', 0)}ms"
         )
-        # 伪造RAG hits以供后续处理
-        # if intent == "SQL_tool_2":
-        #     ev["kb_hits"] = [{"page": "1", "text": "Criteria For Softball Female - U17: Dimension Home to Pitchers Plate should be greater than 12.9m and less than 13.42m; Home to First Base Path should be greater than 17.988m and less than 18.588m"}]
-        #     rag_hits = ev.get("kb_hits", [])
-        #     if rag_hits:
-        #         answer_md += "\n\n---\n\n"
-        #         # 使用 LLM 总结 RAG 上下文
-        #         rag_context = _summarize_rag_context_dimension_comparison(
-        #             rag_snippets=rag_hits,
-        #             query=user_query,
-        #             sql_result_summary=sql_summary, sql=sql.get("rows", [])
-        #         )
-        #         answer_md += rag_context
-                
-        #         # 添加引用
-        #         for h in rag_hits[:3]:
-        #             citations.append({
-        #                 "title": "Reference Document", 
-        #                 "source": h.get("source", "")
-        #             })
-        # Add RAG context for hybrid queries
+
         if intent == "RAG+SQL_tool":
             rag_hits = ev.get("kb_hits", [])
             if rag_hits:
@@ -637,13 +600,15 @@ def compose_answer(
                         sql_result_summary=sql.get("rows",[]),
                         field_type=field_type
                     )
+                    tables[0]["columns"].extend(list(rag_context.keys()))
+                    tables[0]["rows"][0].update(rag_context)
                 else:
                     rag_context = _summarize_rag_context(
                         rag_snippets=rag_hits,
                         query=user_query or "",
                         sql_result_summary=sql_summary
                     )
-                answer_md += str(rag_context)
+                answer_md += "Please see the table below. Note: This feature is unreliable and may produce incorrect results.\n\n"
                 for h in rag_hits[:3]:
                     citations.append({"title": "Reference Document", "source": h.get("source", "")})
 

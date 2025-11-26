@@ -284,7 +284,6 @@ def _tpl_get_diamond_dimensions(con: sqlite3.Connection, params: Dict[str, Any])
     cur = con.execute(sql)
     cols = [d[0] for d in cur.description] if cur.description else []
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    print(rows)
     elapsed = int((time.time() - t0) * 1000)
     return {"rows": rows, "rowcount": len(rows), "elapsed_ms": elapsed}
 
